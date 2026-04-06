@@ -7,12 +7,14 @@ import {
   TouchableOpacity,
   Alert,
   RefreshControl,
+  Image,
 } from 'react-native'
 import { useRouter, type Href } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { Ionicons } from '@expo/vector-icons'
 import { userService } from '@/services/user-service'
 import { useAuthStore } from '@/store/auth-store'
+import { supabase } from '@/lib/supabase'
 import { UserProfile } from '@/types/user'
 import Loading from '@/components/Loading'
 import Button from '@/components/Button'
@@ -24,6 +26,7 @@ export default function ProfileScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
 
   const loadProfile = async () => {
     try {
@@ -39,6 +42,33 @@ export default function ProfileScreen() {
     }
   }
 
+  const loadAvatar = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      // Custom uploaded avatar → signed URL
+      const storagePath = user.user_metadata?.avatar_storage_path as string | undefined
+      if (storagePath) {
+        const { data } = await supabase.storage
+          .from('image')
+          .createSignedUrl(storagePath, 3600)
+        if (data?.signedUrl) {
+          setAvatarUrl(data.signedUrl)
+          return
+        }
+      }
+
+      // Fallback: OAuth avatar (Google login)
+      const oauthAvatar = user.user_metadata?.avatar_url as string | undefined
+      if (oauthAvatar) {
+        setAvatarUrl(oauthAvatar)
+      }
+    } catch (e) {
+      console.error('Failed to load avatar:', e)
+    }
+  }
+
   useEffect(() => {
     if (!isAuthenticated) {
       setProfile(null)
@@ -47,11 +77,13 @@ export default function ProfileScreen() {
     }
     setLoading(true)
     loadProfile()
+    loadAvatar()
   }, [isAuthenticated])
 
   const onRefresh = () => {
     setRefreshing(true)
     loadProfile()
+    loadAvatar()
   }
 
   const handleSignOut = () => {
@@ -148,13 +180,26 @@ export default function ProfileScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <View style={styles.profileCard}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {profile?.fullName?.charAt(0).toUpperCase() || 'U'}
-            </Text>
+          {/* Avatar with image support */}
+          <View style={styles.avatarContainer}>
+            {avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+            ) : (
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>
+                  {profile?.fullName?.charAt(0).toUpperCase() || 'U'}
+                </Text>
+              </View>
+            )}
           </View>
           <Text style={styles.name}>{profile?.fullName || 'Người dùng'}</Text>
           <Text style={styles.email}>{profile?.email}</Text>
+          {profile?.shop && (
+            <View style={styles.shopBadge}>
+              <Ionicons name="storefront-outline" size={14} color={COLORS.primary} />
+              <Text style={styles.shopBadgeText}>{profile.shop.shopName}</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.section}>
@@ -219,6 +264,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
     marginBottom: SIZES.sm,
   },
+  avatarContainer: {
+    marginBottom: SIZES.md,
+  },
   avatar: {
     width: 80,
     height: 80,
@@ -226,7 +274,13 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: SIZES.md,
+  },
+  avatarImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 2,
+    borderColor: COLORS.border,
   },
   avatarText: {
     fontSize: FONTS.size.xxxl,
@@ -242,6 +296,21 @@ const styles = StyleSheet.create({
   email: {
     fontSize: FONTS.size.sm,
     color: COLORS.textSecondary,
+  },
+  shopBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SIZES.xs,
+    marginTop: SIZES.sm,
+    paddingHorizontal: SIZES.md,
+    paddingVertical: SIZES.xs,
+    backgroundColor: COLORS.primary + '15',
+    borderRadius: 20,
+  },
+  shopBadgeText: {
+    fontSize: FONTS.size.xs,
+    fontWeight: '600',
+    color: COLORS.primary,
   },
   section: {
     backgroundColor: COLORS.card,

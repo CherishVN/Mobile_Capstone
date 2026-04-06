@@ -1,6 +1,20 @@
 import { api } from '@/lib/api-client'
 import { ProductReviewListResponse } from '@/types/review'
 
+export interface CreateProductReviewRequest {
+  orderId: string
+  productId: string
+  rating: number
+  comment?: string
+  imageUrls?: string[]
+}
+
+export interface CreateProductReviewResponse {
+  success: boolean
+  message: string
+  data?: any
+}
+
 export const reviewService = {
   getProductReviews: (
     productId: string,
@@ -15,4 +29,7 @@ export const reviewService = {
       `/api/reviews/products/${productId}${qs ? `?${qs}` : ''}`
     )
   },
+
+  createProductReview: (data: CreateProductReviewRequest) =>
+    api.post<CreateProductReviewResponse>('/api/reviews/products', data),
 }

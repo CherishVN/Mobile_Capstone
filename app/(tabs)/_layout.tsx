@@ -3,9 +3,11 @@ import { Ionicons } from '@expo/vector-icons'
 import { COLORS, FONTS } from '@/constants/theme'
 import { useCartStore } from '@/store/cart-store'
 import { View, Text, StyleSheet } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 export default function TabsLayout() {
   const cartTotal = useCartStore((state) => state.getTotalItems())
+  const insets = useSafeAreaInsets()
 
   return (
     <Tabs
@@ -17,8 +19,8 @@ export default function TabsLayout() {
           backgroundColor: COLORS.card,
           borderTopColor: COLORS.border,
           borderTopWidth: 1,
-          height: 60,
-          paddingBottom: 8,
+          height: 40 + insets.bottom,
+          paddingBottom: 8 + insets.bottom,
           paddingTop: 8,
         },
         tabBarLabelStyle: {
@@ -57,8 +59,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Tài khoản',
-          tabBarIcon: ({ color, size }) => (
+          title: 'Tôi',          tabBarIcon: ({ color, size }) => (
             <View>
               <Ionicons name="person-outline" size={size} color={color} />
             </View>

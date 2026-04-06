@@ -8,16 +8,21 @@ import {
   Alert,
   Image,
   Linking,
+  ActivityIndicator,
 } from 'react-native'
 import { useRouter, useLocalSearchParams } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { Ionicons } from '@expo/vector-icons'
 import { orderService } from '@/services/order-service'
 import { paymentService } from '@/services/payment-service'
+import { cartService } from '@/services/cart-service'
 import { Order, OrderStatus, getOrderStatusColor } from '@/types/order'
+import ReviewModal from '@/components/ReviewModal'
 import Button from '@/components/Button'
 import Loading from '@/components/Loading'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
+
+const REORDERABLE_STATUSES = new Set([5, 6, 7, 8])
 
 export default function OrderDetailScreen() {
   const router = useRouter()
@@ -29,6 +34,8 @@ export default function OrderDetailScreen() {
   const [cancelling, setCancelling] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [paying, setPaying] = useState(false)
+  const [reordering, setReordering] = useState(false)
+  const [reviewingOrder, setReviewingOrder] = useState<Order | null>(null)
 
   useEffect(() => {
     loadOrder()
@@ -114,6 +121,33 @@ export default function OrderDetailScreen() {
     }
   }
 
+  const handleReorder = async () => {
+    if (!order) return
+    setReordering(true)
+    let successCount = 0
+    let failedCount = 0
+
+    for (const item of order.items) {
+      try {
+        await cartService.addItem({ productId: item.productId, quantity: item.quantity })
+        successCount++
+      } catch {
+        failedCount++
+      }
+    }
+
+    if (successCount > 0) {
+      Alert.alert('Thành công', `Đã thêm ${successCount} sản phẩm vào giỏ hàng`, [
+        { text: 'Xem giỏ hàng', onPress: () => router.push('/cart') },
+        { text: 'OK' },
+      ])
+    }
+    if (failedCount > 0) {
+      Alert.alert('Lỗi', `${failedCount} sản phẩm mua lại thất bại`)
+    }
+    setReordering(false)
+  }
+
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('vi-VN', {
       style: 'currency',
@@ -148,6 +182,10 @@ export default function OrderDetailScreen() {
   const canCancelPending = order.status === OrderStatus.PendingPayment
   const canPay = order.status === OrderStatus.PendingPayment
   const canConfirmReceive = order.status === OrderStatus.Shipping
+  const canReorder = REORDERABLE_STATUSES.has(order.status)
+  const canReview =
+    order.status === OrderStatus.Completed &&
+    order.items.some((i) => i.hasReviewedByUser !== true)
 
   const goShop = () => {
     if (order.shopSlug) {
@@ -180,6 +218,7 @@ export default function OrderDetailScreen() {
           <Text style={styles.orderDate}>Đặt lúc: {formatDate(order.createdAt)}</Text>
         </View>
 
+        {/* Shop section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Ionicons name="storefront" size={20} color={COLORS.primary} />
@@ -192,12 +231,22 @@ export default function OrderDetailScreen() {
             disabled={!order.shopSlug}
           >
             <Text style={styles.shopName}>{order.shopName}</Text>
-            {order.shopSlug ? (
-              <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
-            ) : null}
+            <View style={styles.shopBtns}>
+              <TouchableOpacity
+                style={styles.shopSmallBtn}
+                onPress={() => router.push('/messages' as any)}
+              >
+                <Ionicons name="chatbubble-outline" size={14} color={COLORS.primary} />
+                <Text style={styles.shopSmallBtnText}>Chat</Text>
+              </TouchableOpacity>
+              {order.shopSlug ? (
+                <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+              ) : null}
+            </View>
           </TouchableOpacity>
         </View>
 
+        {/* Products section with images */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Ionicons name="bag" size={20} color={COLORS.primary} />
@@ -205,10 +254,13 @@ export default function OrderDetailScreen() {
           </View>
           {order.items.map((item) => (
             <View key={item.id} style={styles.productItem}>
-              <Image
-                source={{ uri: item.productImage || 'https://via.placeholder.com/60' }}
-                style={styles.productImage}
-              />
+              <View style={styles.productThumb}>
+                {item.productImage ? (
+                  <Image source={{ uri: item.productImage }} style={styles.productImage} />
+                ) : (
+                  <Ionicons name="image-outline" size={24} color={COLORS.textSecondary} />
+                )}
+              </View>
               <View style={styles.productInfo}>
                 <Text style={styles.productName} numberOfLines={2}>
                   {item.productName}
@@ -223,6 +275,7 @@ export default function OrderDetailScreen() {
           ))}
         </View>
 
+        {/* Address */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Ionicons name="location" size={20} color={COLORS.primary} />
@@ -231,6 +284,7 @@ export default function OrderDetailScreen() {
           <Text style={styles.addressText}>{order.shippingAddress || '—'}</Text>
         </View>
 
+        {/* Summary */}
         <View style={styles.section}>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Tạm tính:</Text>
@@ -248,7 +302,8 @@ export default function OrderDetailScreen() {
         </View>
       </ScrollView>
 
-      {(canPay || canCancelPending || canConfirmReceive) && (
+      {/* Footer actions */}
+      {(canPay || canCancelPending || canConfirmReceive || canReview || canReorder) && (
         <View style={styles.footer}>
           {canPay && (
             <>
@@ -278,6 +333,24 @@ export default function OrderDetailScreen() {
               size="lg"
             />
           )}
+          {canReview && (
+            <Button
+              title="⭐ Đánh Giá"
+              onPress={() => setReviewingOrder(order)}
+              fullWidth
+              size="lg"
+            />
+          )}
+          {canReorder && (
+            <Button
+              title={reordering ? 'Đang thêm...' : '🔄 Mua lại'}
+              onPress={handleReorder}
+              loading={reordering}
+              variant="outline"
+              fullWidth
+              size="lg"
+            />
+          )}
           {canCancelPending && (
             <Button
               title="Hủy đơn (chờ thanh toán)"
@@ -288,6 +361,19 @@ export default function OrderDetailScreen() {
             />
           )}
         </View>
+      )}
+
+      {/* Review modal */}
+      {reviewingOrder && (
+        <ReviewModal
+          visible={!!reviewingOrder}
+          order={reviewingOrder}
+          onClose={() => setReviewingOrder(null)}
+          onSuccess={() => {
+            setReviewingOrder(null)
+            loadOrder()
+          }}
+        />
       )}
     </View>
   )
@@ -379,6 +465,27 @@ const styles = StyleSheet.create({
   shopName: {
     fontSize: FONTS.size.md,
     color: COLORS.text,
+    flex: 1,
+  },
+  shopBtns: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SIZES.sm,
+  },
+  shopSmallBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: SIZES.sm,
+    paddingVertical: SIZES.xs,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  shopSmallBtnText: {
+    fontSize: FONTS.size.xs,
+    color: COLORS.primary,
+    fontWeight: '500',
   },
   productItem: {
     flexDirection: 'row',
@@ -387,11 +494,19 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-  productImage: {
+  productThumb: {
     width: 60,
     height: 60,
     borderRadius: 8,
     backgroundColor: COLORS.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  productImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
   },
   productInfo: {
     flex: 1,
@@ -413,7 +528,8 @@ const styles = StyleSheet.create({
   },
   productPrice: {
     fontSize: FONTS.size.sm,
-    color: COLORS.text,
+    color: COLORS.primary,
+    fontWeight: '600',
   },
   productQuantity: {
     fontSize: FONTS.size.sm,

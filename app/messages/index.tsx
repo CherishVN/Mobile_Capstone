@@ -13,6 +13,7 @@ import { useRouter, useFocusEffect, type Href } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { Ionicons } from '@expo/vector-icons'
 import { useAuthStore } from '@/store/auth-store'
+import { useChatStore } from '@/store/chat-store'
 import { conversationService } from '@/services/conversation-service'
 import type { ConversationDto } from '@/types/conversation'
 import Button from '@/components/Button'
@@ -35,32 +36,32 @@ function formatTime(iso: string | undefined) {
 export default function MessagesListScreen() {
   const router = useRouter()
   const { isAuthenticated } = useAuthStore()
-  const [items, setItems] = useState<ConversationDto[]>([])
-  const [loading, setLoading] = useState(true)
+  const { conversationsList, setConversationsList } = useChatStore()
+  
+  const [loading, setLoading] = useState(conversationsList.length === 0)
   const [refreshing, setRefreshing] = useState(false)
 
   const load = useCallback(async () => {
     try {
       const list = await conversationService.listMine()
-      setItems(list)
+      setConversationsList(list)
     } catch (e) {
       console.error(e)
-      setItems([])
     } finally {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [])
+  }, [setConversationsList])
 
   useFocusEffect(
     useCallback(() => {
       if (isAuthenticated) {
-        setLoading(true)
+        if (conversationsList.length === 0) setLoading(true)
         load()
       } else {
         setLoading(false)
       }
-    }, [isAuthenticated, load])
+    }, [isAuthenticated, load, conversationsList.length])
   )
 
   const onRefresh = () => {
@@ -150,19 +151,25 @@ export default function MessagesListScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      <FlatList
-        data={items}
-        keyExtractor={(c) => c.id}
-        renderItem={renderItem}
-        style={styles.list}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        contentContainerStyle={items.length === 0 ? styles.emptyList : undefined}
-        ListEmptyComponent={
-          <Text style={styles.emptyText}>
-            Chưa có hội thoại nào. Mở cửa hàng và chọn «Chat với shop».
-          </Text>
-        }
-      />
+      {loading && conversationsList.length === 0 ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      ) : (
+        <FlatList
+          data={conversationsList}
+          keyExtractor={(c) => c.id}
+          renderItem={renderItem}
+          style={styles.list}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          contentContainerStyle={conversationsList.length === 0 ? styles.emptyList : undefined}
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>
+              Chưa có hội thoại nào. Mở cửa hàng và chọn «Chat với shop».
+            </Text>
+          }
+        />
+      )}
     </View>
   )
 }

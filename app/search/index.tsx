@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   View,
   Text,
@@ -26,22 +26,33 @@ export default function SearchScreen() {
   const [loading, setLoading] = useState(false)
   const [searched, setSearched] = useState(false)
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) return
+  useEffect(() => {
+    const debounceTimer = setTimeout(async () => {
+      if (!searchQuery.trim()) {
+        setProducts([])
+        setSearched(false)
+        return
+      }
 
-    setLoading(true)
-    setSearched(true)
-    try {
-      const response = await productService.getProducts({
-        search: searchQuery,
-        pageSize: 20,
-      })
-      setProducts(response.products)
-    } catch (error: any) {
-      console.error('Search failed:', error)
-    } finally {
-      setLoading(false)
-    }
+      setLoading(true)
+      setSearched(true)
+      try {
+        const response = await productService.getProducts({
+          search: searchQuery.trim(),
+          pageSize: 20,
+        })
+        setProducts(response.products || [])
+      } catch (error: any) {
+        console.error('Search failed:', error)
+      } finally {
+        setLoading(false)
+      }
+    }, 500)
+
+    return () => clearTimeout(debounceTimer)
+  }, [searchQuery])
+
+  const handleManualSubmit = () => {
   }
 
   return (
@@ -60,7 +71,7 @@ export default function SearchScreen() {
             placeholderTextColor={COLORS.placeholder}
             value={searchQuery}
             onChangeText={setSearchQuery}
-            onSubmitEditing={handleSearch}
+            onSubmitEditing={handleManualSubmit}
             returnKeyType="search"
             autoFocus
           />
