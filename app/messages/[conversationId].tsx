@@ -12,7 +12,7 @@ import {
   Alert,
   Image,
 } from 'react-native'
-import { useRouter, useLocalSearchParams } from 'expo-router'
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
@@ -22,6 +22,7 @@ import { useAuthStore } from '@/store/auth-store'
 import { useChatStore } from '@/store/chat-store'
 import { conversationService } from '@/services/conversation-service'
 import { supabase } from '@/lib/supabase'
+import { useChatRealtime, useChatRealtimeContext } from '@/contexts/chat-realtime-context'
 import type { ChatMessageDto, ConversationDto } from '@/types/conversation'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -31,15 +32,16 @@ export default function ConversationChatScreen() {
   const params = useLocalSearchParams()
   const insets = useSafeAreaInsets()
   const conversationId = params.conversationId as string
-  const { isAuthenticated } = useAuthStore()
-
-  // Zustand Store Cache
-  const { messagesByConversation, conversationsById, loadMessages, addMessage, setConversationDetail } = useChatStore()
-  
-  const conversation = conversationsById[conversationId] || null
-  const messages = messagesByConversation[conversationId] || []
-  
+  const { isAuthenticated, user } = useAuthStore()
+  const { setActiveConversationId } = useChatRealtimeContext()
+  const { messagesByConversation, conversationsById, loadMessages, addMessage, setConversationDetail } =
+    useChatStore()
   const listRef = useRef<FlatList>(null)
+  const userIdRef = useRef(user?.id)
+  userIdRef.current = user?.id
+
+  const conversation: ConversationDto | null = conversationsById[conversationId] || null
+  const messages: ChatMessageDto[] = messagesByConversation[conversationId] || []
   const [input, setInput] = useState('')
   // Optimize initial loading visualization by checking if we have cache
   const [loading, setLoading] = useState(!messages.length)
@@ -71,6 +73,30 @@ export default function ConversationChatScreen() {
     load()
   }, [load])
 
+  useFocusEffect(
+    useCallback(() => {
+      setActiveConversationId(conversationId)
+      return () => setActiveConversationId(null)
+    }, [conversationId, setActiveConversationId])
+  )
+
+  const loadRef = useRef(load)
+  loadRef.current = load
+
+  useChatRealtime({
+    onChatMessageReceived: ({ conversationId: cid, message }) => {
+      if (!message || cid !== conversationId) return
+      addMessage(conversationId, message)
+      const uid = userIdRef.current
+      if (uid && message.senderId !== uid) {
+        void conversationService.markAsRead(conversationId)
+      }
+    },
+    onReconnected: () => {
+      void loadRef.current()
+    },
+  })
+
   useEffect(() => {
     if (!loading && messages.length > 0) {
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 200)
@@ -99,9 +125,7 @@ export default function ConversationChatScreen() {
     setSending(true)
     
     try {
-      const saved = await conversationService.sendMessage(conversationId, text, 'text')
-      // The store's addMessage is intelligent enough to replace tmp if we logic it
-      // But standard approach is load API response back.
+      const saved = await conversationService.sendMessage(conversationId, text)
       addMessage(conversationId, saved)
     } catch (e: any) {
       Alert.alert('Lỗi', e?.message || 'Gửi thất bại')
@@ -148,7 +172,7 @@ export default function ConversationChatScreen() {
       // Fetch blob & Upload using decode
       const arrayBuffer = decode(asset.base64!)
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('image')
         .upload(storagePath, arrayBuffer, {
           cacheControl: '31536000',
@@ -189,7 +213,9 @@ export default function ConversationChatScreen() {
 
   const renderItem = ({ item }: { item: ChatMessageDto }) => {
     const isBuyer = item.senderRole === 'buyer'
-    const isImage = item.messageType === 'image' || item.content.startsWith('http') && item.content.match(/\.(jpeg|jpg|gif|png|webp)/i)
+    const isImage =
+      item.messageType === 'image' ||
+      (item.content.startsWith('http') && item.content.match(/\.(jpeg|jpg|gif|png|webp)/i))
 
     return (
       <View style={[styles.bubbleWrap, isBuyer ? styles.alignEnd : styles.alignStart]}>

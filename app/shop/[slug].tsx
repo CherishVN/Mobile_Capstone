@@ -22,6 +22,8 @@ import Loading from '@/components/Loading'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
 import { useAuthStore } from '@/store/auth-store'
 import { conversationService } from '@/services/conversation-service'
+import { reviewService } from '@/services/review-service'
+import type { ShopReview } from '@/types/review'
 
 const { width } = Dimensions.get('window')
 
@@ -33,8 +35,10 @@ export default function ShopDetailScreen() {
 
   const [shop, setShop] = useState<Shop | null>(null)
   const [products, setProducts] = useState<Product[]>([])
+  const [shopReviews, setShopReviews] = useState<ShopReview[]>([])
   const [loading, setLoading] = useState(true)
   const [openingChat, setOpeningChat] = useState(false)
+  const [followBusy, setFollowBusy] = useState(false)
 
   useEffect(() => {
     loadShopData()
@@ -50,11 +54,15 @@ export default function ShopDetailScreen() {
       }
       const mapped = mapShopPublicToShop(shopRes.shop)
       setShop(mapped)
-      const productsRes = await shopService.getShopProducts(mapped.id, {
-        pageSize: 40,
-        sortBy: 'newest',
-      })
+      const [productsRes, reviewsRes] = await Promise.all([
+        shopService.getShopProducts(mapped.id, {
+          pageSize: 40,
+          sortBy: 'newest',
+        }),
+        reviewService.getShopReviews(mapped.id, { pageSize: 8, sortBy: 'newest' }).catch(() => null),
+      ])
       setProducts(productsRes.products || [])
+      setShopReviews(reviewsRes?.success ? reviewsRes.reviews || [] : [])
     } catch (error: any) {
       console.error('Failed to load shop:', error)
       setShop(null)
@@ -73,6 +81,47 @@ export default function ShopDetailScreen() {
         <Text style={styles.errorText}>Không tìm thấy cửa hàng</Text>
       </View>
     )
+  }
+
+  const toggleFollow = async () => {
+    if (!isAuthenticated) {
+      router.push('/auth/login')
+      return
+    }
+    setFollowBusy(true)
+    try {
+      if (shop.isFollowing) {
+        const r = await shopService.unfollowShop(shop.id)
+        if (r.success !== false) {
+          setShop((s) =>
+            s
+              ? {
+                  ...s,
+                  isFollowing: false,
+                  followerCount: Math.max(0, s.followerCount - 1),
+                }
+              : s
+          )
+        }
+      } else {
+        const r = await shopService.followShop(shop.id)
+        if (r.success !== false) {
+          setShop((s) =>
+            s
+              ? {
+                  ...s,
+                  isFollowing: true,
+                  followerCount: s.followerCount + 1,
+                }
+              : s
+          )
+        }
+      }
+    } catch (e: any) {
+      Alert.alert('Cửa hàng', e?.message || 'Không cập nhật được theo dõi')
+    } finally {
+      setFollowBusy(false)
+    }
   }
 
   const openShopChat = async () => {
@@ -117,21 +166,53 @@ export default function ShopDetailScreen() {
             )}
             <View style={styles.shopInfo}>
               <Text style={styles.shopName}>{shop.name}</Text>
-              <TouchableOpacity
-                style={styles.chatShopBtn}
-                onPress={openShopChat}
-                disabled={openingChat}
-                activeOpacity={0.8}
-              >
-                {openingChat ? (
-                  <ActivityIndicator size="small" color={COLORS.onPrimary} />
-                ) : (
-                  <>
-                    <Ionicons name="chatbubble-ellipses-outline" size={16} color={COLORS.onPrimary} />
-                    <Text style={styles.chatShopBtnText}>Chat với shop</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              <View style={styles.actionRow}>
+                <TouchableOpacity
+                  style={[styles.chatShopBtn, styles.actionHalf]}
+                  onPress={openShopChat}
+                  disabled={openingChat}
+                  activeOpacity={0.8}
+                >
+                  {openingChat ? (
+                    <ActivityIndicator size="small" color={COLORS.onPrimary} />
+                  ) : (
+                    <>
+                      <Ionicons name="chatbubble-ellipses-outline" size={16} color={COLORS.onPrimary} />
+                      <Text style={styles.chatShopBtnText}>Chat</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.followBtn,
+                    shop.isFollowing && styles.followBtnActive,
+                    styles.actionHalf,
+                  ]}
+                  onPress={toggleFollow}
+                  disabled={followBusy}
+                  activeOpacity={0.8}
+                >
+                  {followBusy ? (
+                    <ActivityIndicator size="small" color={COLORS.primary} />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name={shop.isFollowing ? 'heart' : 'heart-outline'}
+                        size={18}
+                        color={shop.isFollowing ? COLORS.onPrimary : COLORS.primary}
+                      />
+                      <Text
+                        style={[
+                          styles.followBtnText,
+                          shop.isFollowing && styles.followBtnTextActive,
+                        ]}
+                      >
+                        {shop.isFollowing ? 'Đang theo dõi' : 'Theo dõi'}
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
               <View style={styles.statsRow}>
                 <View style={styles.stat}>
                   <Ionicons name="star" size={14} color="#FFD700" />
@@ -158,6 +239,42 @@ export default function ShopDetailScreen() {
             <Text style={styles.description}>{shop.description}</Text>
           </View>
         )}
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>
+            Đánh giá từ khách ({shop.reviewCount})
+          </Text>
+          {shopReviews.length === 0 ? (
+            <Text style={styles.reviewsEmpty}>Chưa có đánh giá hiển thị.</Text>
+          ) : (
+            shopReviews.map((r) => (
+              <View key={r.id} style={styles.reviewCard}>
+                <View style={styles.reviewTop}>
+                  <Text style={styles.reviewUser} numberOfLines={1}>
+                    {r.userName || 'Khách hàng'}
+                  </Text>
+                  <View style={styles.reviewStars}>
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <Ionicons
+                        key={n}
+                        name={n <= r.rating ? 'star' : 'star-outline'}
+                        size={14}
+                        color="#f59c2a"
+                      />
+                    ))}
+                  </View>
+                </View>
+                {r.title ? <Text style={styles.reviewTitle}>{r.title}</Text> : null}
+                {r.content ? (
+                  <Text style={styles.reviewContent}>{r.content}</Text>
+                ) : null}
+                <Text style={styles.reviewDate}>
+                  {new Date(r.createdAt).toLocaleDateString('vi-VN')}
+                </Text>
+              </View>
+            ))
+          )}
+        </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Sản phẩm ({products.length})</Text>
@@ -244,22 +361,94 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     marginBottom: SIZES.sm,
   },
+  actionRow: {
+    flexDirection: 'row',
+    gap: SIZES.sm,
+    marginBottom: SIZES.sm,
+  },
+  actionHalf: {
+    flex: 1,
+    minWidth: 0,
+  },
   chatShopBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     backgroundColor: COLORS.primary,
-    paddingVertical: 8,
-    paddingHorizontal: SIZES.md,
+    paddingVertical: 10,
+    paddingHorizontal: SIZES.sm,
     borderRadius: 10,
-    marginBottom: SIZES.sm,
-    minHeight: 36,
+    minHeight: 40,
   },
   chatShopBtnText: {
     color: COLORS.onPrimary,
     fontSize: FONTS.size.sm,
     fontWeight: '600',
+  },
+  followBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.card,
+    paddingVertical: 10,
+    paddingHorizontal: SIZES.sm,
+    borderRadius: 10,
+    minHeight: 40,
+  },
+  followBtnActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  followBtnText: {
+    fontSize: FONTS.size.sm,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+  followBtnTextActive: {
+    color: COLORS.onPrimary,
+  },
+  reviewsEmpty: {
+    fontSize: FONTS.size.sm,
+    color: COLORS.textSecondary,
+  },
+  reviewCard: {
+    paddingVertical: SIZES.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  reviewTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: SIZES.sm,
+  },
+  reviewUser: {
+    flex: 1,
+    fontSize: FONTS.size.sm,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  reviewStars: { flexDirection: 'row', gap: 2 },
+  reviewTitle: {
+    marginTop: SIZES.xs,
+    fontSize: FONTS.size.sm,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  reviewContent: {
+    marginTop: 4,
+    fontSize: FONTS.size.sm,
+    color: COLORS.textSecondary,
+    lineHeight: 20,
+  },
+  reviewDate: {
+    marginTop: SIZES.xs,
+    fontSize: FONTS.size.xs,
+    color: COLORS.textSecondary,
   },
   statsRow: {
     flexDirection: 'row',

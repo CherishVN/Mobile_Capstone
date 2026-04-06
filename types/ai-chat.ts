@@ -57,4 +57,47 @@ export interface AssistantUiMessage extends AiChatMessage {
   products?: ProductSuggestion[]
   productToAdd?: ProductToAdd | null
   cartId?: string
+  /** Giữ meta gốc để xử lý checkout / confirm */
+  sendResponse?: AiChatSendResponse
 }
+
+export interface AiSessionLastMessage {
+  role: string
+  content: string
+  createdAt?: string
+}
+
+export interface AiSessionSummary {
+  sessionId: string
+  status: string
+  createdAt?: string
+  updatedAt?: string
+  title: string
+  lastMessage?: AiSessionLastMessage | null
+  messageCount: number
+  isMuted?: boolean
+  unreadCount?: number
+}
+
+export interface AiSessionsListResponse {
+  success: boolean
+  sessions: AiSessionSummary[]
+  totalCount: number
+  page: number
+  pageSize: number
+}
+
+export interface AiSessionMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  createdAt?: string
+}
+
+export interface AiSessionMessagesResponse {
+  success: boolean
+  sessionId: string
+  messages: AiSessionMessage[]
+}
+
+export type SessionFilter = 'all' | 'unread' | 'muted'

@@ -19,4 +19,10 @@ export const shopService = {
       `/api/shops/${shopId}/products${q ? `?${q}` : ''}`
     )
   },
+
+  followShop: (shopId: string) =>
+    api.post<{ success: boolean; message?: string }>(`/api/shops/${shopId}/follow`),
+
+  unfollowShop: (shopId: string) =>
+    api.delete<{ success: boolean; message?: string }>(`/api/shops/${shopId}/follow`),
 }

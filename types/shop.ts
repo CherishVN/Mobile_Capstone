@@ -33,4 +33,6 @@ export interface Shop {
   averageRating: number
   reviewCount: number
   createdAt: string
+  /** Có khi gọi API kèm token */
+  isFollowing?: boolean
 }
