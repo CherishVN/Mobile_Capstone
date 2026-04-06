@@ -1,27 +1,22 @@
 import React, { useEffect, useState } from 'react'
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-  ActivityIndicator,
-} from 'react-native'
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking } from 'react-native'
 import { useRouter } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { Ionicons } from '@expo/vector-icons'
 import { cartService } from '@/services/cart-service'
 import { userService } from '@/services/user-service'
 import { orderService } from '@/services/order-service'
+import { paymentService } from '@/services/payment-service'
 import { Cart } from '@/types/cart'
 import { Address } from '@/types/user'
 import Button from '@/components/Button'
 import Loading from '@/components/Loading'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
+import { useAuthStore } from '@/store/auth-store'
 
 export default function CheckoutScreen() {
   const router = useRouter()
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const [cart, setCart] = useState<Cart | null>(null)
   const [addresses, setAddresses] = useState<Address[]>([])
   const [selectedAddress, setSelectedAddress] = useState<Address | null>(null)
@@ -29,8 +24,12 @@ export default function CheckoutScreen() {
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      router.replace('/auth/login')
+      return
+    }
     loadData()
-  }, [])
+  }, [isAuthenticated])
 
   const loadData = async () => {
     try {
@@ -68,10 +67,46 @@ export default function CheckoutScreen() {
         shippingAddressId: selectedAddress.id,
       })
 
-      Alert.alert('Đặt hàng thành công', 'Đơn hàng của bạn đã được tạo', [
+      const payload = response.data
+      const orderIds = payload?.orderIds || []
+      const n = orderIds.length
+
+      if (!response.success || !payload?.success || n === 0) {
+        throw new Error(payload?.message || response.message || 'Đặt hàng thất bại')
+      }
+
+      const firstOrderId = orderIds[0]
+
+      const msg =
+        n > 1
+          ? `Đã tạo ${n} đơn (mỗi cửa hàng một đơn). Có thể thanh toán đơn đầu tiên hoặc xem tất cả trong mục Đơn hàng.`
+          : 'Đơn hàng đã được tạo. Chọn thanh toán hoặc xem trong mục Đơn hàng.'
+
+      Alert.alert('Đặt hàng thành công', msg, [
+        { text: 'Đơn hàng', style: 'cancel', onPress: () => router.replace('/(tabs)/orders') },
         {
-          text: 'Xem đơn hàng',
-          onPress: () => router.replace('/(tabs)/orders'),
+          text: 'VNPay',
+          onPress: async () => {
+            try {
+              const pay = await paymentService.createVNPay(firstOrderId)
+              if (pay.success && pay.paymentUrl) await Linking.openURL(pay.paymentUrl)
+            } catch {
+              /* empty */
+            }
+            router.replace('/(tabs)/orders')
+          },
+        },
+        {
+          text: 'MoMo',
+          onPress: async () => {
+            try {
+              const pay = await paymentService.createMoMo(firstOrderId)
+              if (pay.success && pay.paymentUrl) await Linking.openURL(pay.paymentUrl)
+            } catch {
+              /* empty */
+            }
+            router.replace('/(tabs)/orders')
+          },
         },
       ])
     } catch (error: any) {

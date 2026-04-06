@@ -18,9 +18,11 @@ import Button from '@/components/Button'
 import Loading from '@/components/Loading'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
 import { useCartStore } from '@/store/cart-store'
+import { useAuthStore } from '@/store/auth-store'
 
 export default function CartScreen() {
   const router = useRouter()
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const [cart, setCart] = useState<Cart | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -43,8 +45,14 @@ export default function CartScreen() {
   }
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setCart(null)
+      setLoading(false)
+      return
+    }
+    setLoading(true)
     loadCart()
-  }, [])
+  }, [isAuthenticated])
 
   const onRefresh = () => {
     setRefreshing(true)
@@ -88,6 +96,13 @@ export default function CartScreen() {
   }
 
   const handleCheckout = () => {
+    if (!isAuthenticated) {
+      Alert.alert('Đăng nhập', 'Vui lòng đăng nhập để thanh toán.', [
+        { text: 'Hủy', style: 'cancel' },
+        { text: 'Đăng nhập', onPress: () => router.push('/auth/login') },
+      ])
+      return
+    }
     if (!cart || cart.items.length === 0) return
     router.push('/checkout')
   }
@@ -99,8 +114,25 @@ export default function CartScreen() {
     }).format(price)
   }
 
-  if (loading) {
+  if (loading && isAuthenticated) {
     return <Loading />
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <View style={styles.container}>
+        <StatusBar style="dark" />
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Giỏ hàng</Text>
+        </View>
+        <View style={styles.guestEmpty}>
+          <Ionicons name="cart-outline" size={64} color={COLORS.textSecondary} />
+          <Text style={styles.emptyText}>Đăng nhập để xem giỏ hàng</Text>
+          <Text style={styles.emptySubtext}>Sản phẩm bạn thêm sẽ hiển thị tại đây.</Text>
+          <Button title="Đăng nhập" onPress={() => router.push('/auth/login')} style={styles.guestBtn} />
+        </View>
+      </View>
+    )
   }
 
   const renderCartItem = ({ item }: { item: CartItem }) => {
@@ -302,6 +334,16 @@ const styles = StyleSheet.create({
   },
   emptyButton: {
     marginTop: SIZES.lg,
+  },
+  guestEmpty: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SIZES.xl,
+  },
+  guestBtn: {
+    marginTop: SIZES.lg,
+    minWidth: 200,
   },
   footer: {
     padding: SIZES.lg,

@@ -6,38 +6,47 @@ import {
   FlatList,
   TouchableOpacity,
   RefreshControl,
+  ScrollView,
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { Ionicons } from '@expo/vector-icons'
 import { orderService } from '@/services/order-service'
-import { Order, OrderStatus, OrderStatusLabels, OrderStatusColors } from '@/types/order'
+import { Order, getOrderStatusColor } from '@/types/order'
+import { useAuthStore } from '@/store/auth-store'
 import Loading from '@/components/Loading'
+import Button from '@/components/Button'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
 
-const ORDER_TABS = [
-  { label: 'Tất cả', status: undefined },
-  { label: 'Chờ xác nhận', status: OrderStatus.Pending },
-  { label: 'Đang giao', status: OrderStatus.Shipping },
-  { label: 'Hoàn thành', status: OrderStatus.Delivered },
+const ORDER_TABS: { label: string; filter: (o: Order) => boolean }[] = [
+  { label: 'Tất cả', filter: () => true },
+  { label: 'Chờ TT', filter: (o) => o.status === 0 },
+  { label: 'Xử lý', filter: (o) => [1, 2, 3].includes(o.status) },
+  { label: 'Đang giao', filter: (o) => o.status === 4 },
+  { label: 'Xong', filter: (o) => [5, 6].includes(o.status) },
 ]
 
 export default function OrdersScreen() {
   const router = useRouter()
-  const [orders, setOrders] = useState<Order[]>([])
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const [allOrders, setAllOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [activeTab, setActiveTab] = useState(0)
 
+  const filteredOrders = allOrders.filter(ORDER_TABS[activeTab].filter)
+
   const loadOrders = async () => {
+    if (!isAuthenticated) {
+      setAllOrders([])
+      setLoading(false)
+      setRefreshing(false)
+      return
+    }
     try {
-      const status = ORDER_TABS[activeTab].status
-      const response = await orderService.getMyOrders({
-        status,
-        pageSize: 50,
-      })
-      if (response.success && response.data) {
-        setOrders(response.data)
+      const response = await orderService.getMyOrders({ pageSize: 100 })
+      if (response.success) {
+        setAllOrders(response.orders)
       }
     } catch (error: any) {
       console.error('Failed to load orders:', error)
@@ -50,7 +59,7 @@ export default function OrdersScreen() {
   useEffect(() => {
     setLoading(true)
     loadOrders()
-  }, [activeTab])
+  }, [isAuthenticated])
 
   const onRefresh = () => {
     setRefreshing(true)
@@ -74,7 +83,7 @@ export default function OrdersScreen() {
   }
 
   const renderOrderItem = ({ item }: { item: Order }) => {
-    const statusColor = OrderStatusColors[item.status]
+    const statusColor = getOrderStatusColor(item.status)
 
     return (
       <TouchableOpacity
@@ -88,9 +97,7 @@ export default function OrdersScreen() {
             <Text style={styles.orderShop}>{item.shopName}</Text>
           </View>
           <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
-            <Text style={[styles.statusText, { color: statusColor }]}>
-              {item.statusName}
-            </Text>
+            <Text style={[styles.statusText, { color: statusColor }]}>{item.statusName}</Text>
           </View>
         </View>
 
@@ -102,9 +109,7 @@ export default function OrdersScreen() {
             </Text>
           ))}
           {item.items.length > 2 && (
-            <Text style={styles.orderItemText}>
-              và {item.items.length - 2} sản phẩm khác
-            </Text>
+            <Text style={styles.orderItemText}>và {item.items.length - 2} sản phẩm khác</Text>
           )}
         </View>
 
@@ -119,6 +124,23 @@ export default function OrdersScreen() {
     )
   }
 
+  if (!isAuthenticated) {
+    return (
+      <View style={styles.container}>
+        <StatusBar style="dark" />
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Đơn hàng</Text>
+        </View>
+        <View style={styles.guestEmpty}>
+          <Ionicons name="receipt-outline" size={64} color={COLORS.textSecondary} />
+          <Text style={styles.guestTitle}>Đăng nhập để xem đơn hàng</Text>
+          <Text style={styles.guestSub}>Theo dõi trạng thái và thanh toán sau khi đăng nhập.</Text>
+          <Button title="Đăng nhập" onPress={() => router.push('/auth/login')} style={styles.guestBtn} />
+        </View>
+      </View>
+    )
+  }
+
   if (loading && !refreshing) {
     return <Loading />
   }
@@ -126,12 +148,17 @@ export default function OrdersScreen() {
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
-      
+
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Đơn hàng</Text>
       </View>
 
-      <View style={styles.tabs}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.tabsRow}
+        style={styles.tabsScroll}
+      >
         {ORDER_TABS.map((tab, index) => (
           <TouchableOpacity
             key={index}
@@ -139,15 +166,13 @@ export default function OrdersScreen() {
             onPress={() => setActiveTab(index)}
             activeOpacity={0.7}
           >
-            <Text style={[styles.tabText, activeTab === index && styles.tabTextActive]}>
-              {tab.label}
-            </Text>
+            <Text style={[styles.tabText, activeTab === index && styles.tabTextActive]}>{tab.label}</Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </ScrollView>
 
       <FlatList
-        data={orders}
+        data={filteredOrders}
         renderItem={renderOrderItem}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
@@ -182,28 +207,35 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: COLORS.text,
   },
-  tabs: {
-    flexDirection: 'row',
+  tabsScroll: {
+    maxHeight: 52,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
     backgroundColor: COLORS.card,
-    paddingHorizontal: SIZES.xs,
+  },
+  tabsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SIZES.sm,
     paddingVertical: SIZES.xs,
+    gap: SIZES.xs,
   },
   tab: {
-    flex: 1,
+    paddingHorizontal: SIZES.md,
     paddingVertical: SIZES.sm,
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  tabActive: {
+    borderRadius: 20,
     backgroundColor: COLORS.background,
   },
+  tabActive: {
+    backgroundColor: COLORS.primary,
+  },
   tabText: {
-    fontSize: FONTS.size.xs,
+    fontSize: FONTS.size.sm,
     color: COLORS.textSecondary,
     fontWeight: '500',
   },
   tabTextActive: {
-    color: COLORS.primary,
+    color: COLORS.onPrimary,
     fontWeight: '600',
   },
   listContent: {
@@ -289,5 +321,28 @@ const styles = StyleSheet.create({
     fontSize: FONTS.size.sm,
     color: COLORS.textSecondary,
     marginTop: SIZES.xs,
+  },
+  guestEmpty: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SIZES.xl,
+  },
+  guestTitle: {
+    fontSize: FONTS.size.lg,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginTop: SIZES.md,
+    textAlign: 'center',
+  },
+  guestSub: {
+    fontSize: FONTS.size.sm,
+    color: COLORS.textSecondary,
+    marginTop: SIZES.sm,
+    textAlign: 'center',
+  },
+  guestBtn: {
+    marginTop: SIZES.xl,
+    minWidth: 200,
   },
 })

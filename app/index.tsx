@@ -5,21 +5,17 @@ import Loading from '@/components/Loading'
 
 export default function Index() {
   const router = useRouter()
-  const { isAuthenticated, isLoading } = useAuthStore()
+  const { isLoading } = useAuthStore()
 
   useEffect(() => {
     if (isLoading) return
 
     const timer = setTimeout(() => {
-      if (!isAuthenticated) {
-        router.replace('/auth/login')
-      } else {
-        router.replace('/(tabs)/home')
-      }
+      router.replace('/(tabs)/home')
     }, 100)
 
     return () => clearTimeout(timer)
-  }, [isAuthenticated, isLoading])
+  }, [isLoading])
 
   return <Loading />
 }

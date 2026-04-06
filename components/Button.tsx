@@ -54,7 +54,7 @@ export default function Button({
     >
       {loading ? (
         <ActivityIndicator
-          color={variant === 'primary' ? COLORS.background : COLORS.primary}
+          color={variant === 'primary' || variant === 'secondary' ? '#ffffff' : COLORS.primary}
         />
       ) : (
         <>
@@ -110,10 +110,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   text_primary: {
-    color: COLORS.background,
+    color: '#ffffff',
   },
   text_secondary: {
-    color: COLORS.background,
+    color: '#ffffff',
   },
   text_outline: {
     color: COLORS.primary,

@@ -49,12 +49,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: FONTS.size.xxxl,
     fontWeight: 'bold',
-    color: COLORS.background,
+    color: COLORS.onPrimary,
     marginBottom: SIZES.xs,
   },
   subtitle: {
     fontSize: FONTS.size.md,
-    color: COLORS.background,
-    opacity: 0.8,
+    color: COLORS.onPrimary,
+    opacity: 0.9,
   },
 })

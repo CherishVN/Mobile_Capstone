@@ -7,12 +7,14 @@ import {
   TouchableOpacity,
   Alert,
   Image,
+  Linking,
 } from 'react-native'
 import { useRouter, useLocalSearchParams } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { Ionicons } from '@expo/vector-icons'
 import { orderService } from '@/services/order-service'
-import { Order, OrderStatus, OrderStatusLabels, OrderStatusColors } from '@/types/order'
+import { paymentService } from '@/services/payment-service'
+import { Order, OrderStatus, getOrderStatusColor } from '@/types/order'
 import Button from '@/components/Button'
 import Loading from '@/components/Loading'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
@@ -25,6 +27,8 @@ export default function OrderDetailScreen() {
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
   const [cancelling, setCancelling] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [paying, setPaying] = useState(false)
 
   useEffect(() => {
     loadOrder()
@@ -33,8 +37,10 @@ export default function OrderDetailScreen() {
   const loadOrder = async () => {
     try {
       const response = await orderService.getOrderById(orderId)
-      if (response.success && response.data) {
-        setOrder(response.data)
+      if (response.success && response.order) {
+        setOrder(response.order)
+      } else {
+        setOrder(null)
       }
     } catch (error: any) {
       Alert.alert('Lỗi', 'Không thể tải thông tin đơn hàng')
@@ -44,8 +50,8 @@ export default function OrderDetailScreen() {
     }
   }
 
-  const handleCancelOrder = () => {
-    Alert.alert('Hủy đơn hàng', 'Bạn có chắc muốn hủy đơn hàng này?', [
+  const handleCancelPending = () => {
+    Alert.alert('Hủy đơn hàng', 'Chỉ hủy được đơn đang chờ thanh toán. Tiếp tục?', [
       { text: 'Không', style: 'cancel' },
       {
         text: 'Hủy đơn',
@@ -53,7 +59,7 @@ export default function OrderDetailScreen() {
         onPress: async () => {
           setCancelling(true)
           try {
-            await orderService.cancelOrder(orderId)
+            await orderService.cancelPendingOrder(orderId)
             Alert.alert('Thành công', 'Đã hủy đơn hàng')
             await loadOrder()
           } catch (error: any) {
@@ -64,6 +70,48 @@ export default function OrderDetailScreen() {
         },
       },
     ])
+  }
+
+  const handleConfirmReceived = () => {
+    Alert.alert('Xác nhận', 'Bạn đã nhận được hàng?', [
+      { text: 'Chưa', style: 'cancel' },
+      {
+        text: 'Đã nhận',
+        onPress: async () => {
+          setConfirming(true)
+          try {
+            await orderService.confirmReceived(orderId)
+            Alert.alert('Thành công', 'Cảm ơn bạn đã xác nhận')
+            await loadOrder()
+          } catch (error: any) {
+            Alert.alert('Lỗi', error.message || 'Không thể xác nhận')
+          } finally {
+            setConfirming(false)
+          }
+        },
+      },
+    ])
+  }
+
+  const openPaymentUrl = async (kind: 'vnpay' | 'momo') => {
+    setPaying(true)
+    try {
+      const res =
+        kind === 'vnpay'
+          ? await paymentService.createVNPay(orderId)
+          : await paymentService.createMoMo(orderId)
+      if (res.success && res.paymentUrl) {
+        const can = await Linking.canOpenURL(res.paymentUrl)
+        if (can) await Linking.openURL(res.paymentUrl)
+        else Alert.alert('Lỗi', 'Không mở được trình duyệt thanh toán')
+      } else {
+        Alert.alert('Lỗi', res.message || 'Không tạo được link thanh toán')
+      }
+    } catch (error: any) {
+      Alert.alert('Lỗi', error.message || 'Thanh toán thất bại')
+    } finally {
+      setPaying(false)
+    }
   }
 
   const formatPrice = (price: number) => {
@@ -96,13 +144,23 @@ export default function OrderDetailScreen() {
     )
   }
 
-  const statusColor = OrderStatusColors[order.status]
-  const canCancel = order.status === OrderStatus.Pending
+  const statusColor = getOrderStatusColor(order.status)
+  const canCancelPending = order.status === OrderStatus.PendingPayment
+  const canPay = order.status === OrderStatus.PendingPayment
+  const canConfirmReceive = order.status === OrderStatus.Shipping
+
+  const goShop = () => {
+    if (order.shopSlug) {
+      router.push(`/shop/${order.shopSlug}`)
+    } else {
+      Alert.alert('Thông báo', 'Không có liên kết cửa hàng')
+    }
+  }
 
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
-      
+
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color={COLORS.text} />
@@ -116,9 +174,7 @@ export default function OrderDetailScreen() {
           <View style={styles.statusHeader}>
             <Text style={styles.orderCode}>{order.orderCode}</Text>
             <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
-              <Text style={[styles.statusText, { color: statusColor }]}>
-                {order.statusName}
-              </Text>
+              <Text style={[styles.statusText, { color: statusColor }]}>{order.statusName}</Text>
             </View>
           </View>
           <Text style={styles.orderDate}>Đặt lúc: {formatDate(order.createdAt)}</Text>
@@ -131,11 +187,14 @@ export default function OrderDetailScreen() {
           </View>
           <TouchableOpacity
             style={styles.shopCard}
-            onPress={() => router.push(`/shop/${order.shopId}`)}
+            onPress={goShop}
             activeOpacity={0.7}
+            disabled={!order.shopSlug}
           >
             <Text style={styles.shopName}>{order.shopName}</Text>
-            <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+            {order.shopSlug ? (
+              <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+            ) : null}
           </TouchableOpacity>
         </View>
 
@@ -154,9 +213,7 @@ export default function OrderDetailScreen() {
                 <Text style={styles.productName} numberOfLines={2}>
                   {item.productName}
                 </Text>
-                {item.variantName && (
-                  <Text style={styles.productVariant}>{item.variantName}</Text>
-                )}
+                {item.variantName && <Text style={styles.productVariant}>{item.variantName}</Text>}
                 <View style={styles.productFooter}>
                   <Text style={styles.productPrice}>{formatPrice(item.unitPrice)}</Text>
                   <Text style={styles.productQuantity}>x{item.quantity}</Text>
@@ -171,7 +228,7 @@ export default function OrderDetailScreen() {
             <Ionicons name="location" size={20} color={COLORS.primary} />
             <Text style={styles.sectionTitle}>Địa chỉ giao hàng</Text>
           </View>
-          <Text style={styles.addressText}>{order.shippingAddress}</Text>
+          <Text style={styles.addressText}>{order.shippingAddress || '—'}</Text>
         </View>
 
         <View style={styles.section}>
@@ -191,15 +248,45 @@ export default function OrderDetailScreen() {
         </View>
       </ScrollView>
 
-      {canCancel && (
+      {(canPay || canCancelPending || canConfirmReceive) && (
         <View style={styles.footer}>
-          <Button
-            title="Hủy đơn hàng"
-            onPress={handleCancelOrder}
-            loading={cancelling}
-            variant="outline"
-            fullWidth
-          />
+          {canPay && (
+            <>
+              <Button
+                title="Thanh toán VNPay"
+                onPress={() => openPaymentUrl('vnpay')}
+                loading={paying}
+                fullWidth
+                size="lg"
+              />
+              <Button
+                title="Thanh toán MoMo"
+                onPress={() => openPaymentUrl('momo')}
+                loading={paying}
+                variant="outline"
+                fullWidth
+                size="lg"
+              />
+            </>
+          )}
+          {canConfirmReceive && (
+            <Button
+              title="Đã nhận hàng"
+              onPress={handleConfirmReceived}
+              loading={confirming}
+              fullWidth
+              size="lg"
+            />
+          )}
+          {canCancelPending && (
+            <Button
+              title="Hủy đơn (chờ thanh toán)"
+              onPress={handleCancelPending}
+              loading={cancelling}
+              variant="outline"
+              fullWidth
+            />
+          )}
         </View>
       )}
     </View>
@@ -371,6 +458,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
+    gap: SIZES.sm,
   },
   errorContainer: {
     flex: 1,

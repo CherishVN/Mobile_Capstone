@@ -1,36 +1,81 @@
 import { api } from '@/lib/api-client'
-import { Order } from '@/types/order'
-import { ApiResponse, PaginatedResponse } from '@/types/api'
+import {
+  mapApiOrderDetailToOrder,
+  mapApiOrderSummaryToOrder,
+  type ApiCustomerOrderDetail,
+  type ApiCustomerOrderSummary,
+} from '@/utils/order-mapper'
 
 export interface CheckoutRequest {
   cartId: string
   shippingAddressId: string
 }
 
-export interface CheckoutResponse {
+/** Body từ POST /api/cart/checkout */
+export interface CheckoutApiBody {
   success: boolean
-  message: string
-  orderIds: string[]
-  totalAmount: number
+  message?: string
+  data?: {
+    success: boolean
+    message?: string
+    orderIds: string[]
+    totalAmount: number
+  }
+}
+
+export interface CustomerOrderListApi {
+  success: boolean
+  message?: string
+  orders: ApiCustomerOrderSummary[]
+  totalCount: number
+  page: number
+  pageSize: number
+}
+
+export interface CustomerOrderDetailApi {
+  success: boolean
+  message?: string
+  order?: ApiCustomerOrderDetail
 }
 
 export const orderService = {
-  getMyOrders: (params: { page?: number; pageSize?: number; status?: number } = {}) => {
+  getMyOrders: async (params: { page?: number; pageSize?: number; status?: number } = {}) => {
     const queryParams = new URLSearchParams()
     if (params.page) queryParams.set('page', String(params.page))
     if (params.pageSize) queryParams.set('pageSize', String(params.pageSize))
     if (params.status !== undefined) queryParams.set('status', String(params.status))
 
     const query = queryParams.toString()
-    return api.get<PaginatedResponse<Order>>(`/api/orders${query ? `?${query}` : ''}`)
+    const res = await api.get<CustomerOrderListApi>(`/api/orders${query ? `?${query}` : ''}`)
+    return {
+      success: res.success,
+      orders: (res.orders || []).map(mapApiOrderSummaryToOrder),
+      totalCount: res.totalCount,
+      page: res.page,
+      pageSize: res.pageSize,
+    }
   },
 
-  getOrderById: (orderId: string) =>
-    api.get<ApiResponse<Order>>(`/api/orders/${orderId}`),
+  getOrderById: async (orderId: string) => {
+    const res = await api.get<CustomerOrderDetailApi>(`/api/orders/${orderId}`)
+    return {
+      success: res.success,
+      order: res.order ? mapApiOrderDetailToOrder(res.order) : null,
+      message: res.message,
+    }
+  },
 
   checkout: (data: CheckoutRequest) =>
-    api.post<ApiResponse<CheckoutResponse>>('/api/cart/checkout', data),
+    api.post<CheckoutApiBody>('/api/cart/checkout', {
+      cartId: data.cartId,
+      shippingAddressId: data.shippingAddressId,
+    }),
 
-  cancelOrder: (orderId: string) =>
-    api.post<ApiResponse<null>>(`/api/orders/${orderId}/cancel`),
+  /** Chỉ đơn chờ thanh toán (0) — khớp backend cancel-pending */
+  cancelPendingOrder: (orderId: string) =>
+    api.post<{ success: boolean; message?: string }>(`/api/orders/${orderId}/cancel-pending`),
+
+  /** Xác nhận đã nhận hàng — đơn đang giao (Shipping) */
+  confirmReceived: (orderId: string) =>
+    api.post<{ success: boolean; message?: string }>(`/api/orders/${orderId}/confirm`),
 }

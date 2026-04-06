@@ -15,11 +15,15 @@ import { StatusBar } from 'expo-status-bar'
 import { Ionicons } from '@expo/vector-icons'
 import { productService } from '@/services/product-service'
 import { cartService } from '@/services/cart-service'
+import { favoriteService } from '@/services/favorite-service'
+import { reviewService } from '@/services/review-service'
 import { ProductDetail, ProductVariant } from '@/types/product'
+import { ProductReview } from '@/types/review'
 import Button from '@/components/Button'
 import Loading from '@/components/Loading'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
 import { useCartStore } from '@/store/cart-store'
+import { useAuthStore } from '@/store/auth-store'
 
 const { width } = Dimensions.get('window')
 
@@ -34,10 +38,37 @@ export default function ProductDetailScreen() {
   const [loading, setLoading] = useState(true)
   const [addingToCart, setAddingToCart] = useState(false)
   const [activeImageIndex, setActiveImageIndex] = useState(0)
+  const [favorited, setFavorited] = useState(false)
+  const [favBusy, setFavBusy] = useState(false)
+  const [reviews, setReviews] = useState<ProductReview[]>([])
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
 
   useEffect(() => {
     loadProduct()
   }, [slug])
+
+  useEffect(() => {
+    if (!product) return
+    reviewService
+      .getProductReviews(product.id, { pageSize: 8, sortBy: 'newest' })
+      .then((r) => {
+        if (r.success) setReviews(r.reviews || [])
+      })
+      .catch(() => setReviews([]))
+  }, [product?.id])
+
+  useEffect(() => {
+    if (!product || !isAuthenticated) {
+      setFavorited(false)
+      return
+    }
+    favoriteService
+      .check(product.id)
+      .then((r) => {
+        if (r.success) setFavorited(r.isFavorited)
+      })
+      .catch(() => setFavorited(false))
+  }, [product?.id, isAuthenticated])
 
   const loadProduct = async () => {
     try {
@@ -56,8 +87,35 @@ export default function ProductDetailScreen() {
     }
   }
 
+  const handleToggleFavorite = async () => {
+    if (!product) return
+    if (!isAuthenticated) {
+      Alert.alert('Đăng nhập', 'Đăng nhập để lưu sản phẩm yêu thích.', [
+        { text: 'Hủy', style: 'cancel' },
+        { text: 'Đăng nhập', onPress: () => router.push('/auth/login') },
+      ])
+      return
+    }
+    setFavBusy(true)
+    try {
+      const r = await favoriteService.toggle(product.id)
+      if (r.success) setFavorited(r.isFavorited)
+    } catch (error: any) {
+      Alert.alert('Lỗi', error.message || 'Không thực hiện được')
+    } finally {
+      setFavBusy(false)
+    }
+  }
+
   const handleAddToCart = async () => {
     if (!product) return
+    if (!isAuthenticated) {
+      Alert.alert('Đăng nhập', 'Vui lòng đăng nhập để thêm vào giỏ hàng.', [
+        { text: 'Hủy', style: 'cancel' },
+        { text: 'Đăng nhập', onPress: () => router.push('/auth/login') },
+      ])
+      return
+    }
 
     setAddingToCart(true)
     try {
@@ -118,6 +176,18 @@ export default function ProductDetailScreen() {
         
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color={COLORS.background} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.favButton}
+          onPress={handleToggleFavorite}
+          disabled={favBusy}
+        >
+          <Ionicons
+            name={favorited ? 'heart' : 'heart-outline'}
+            size={24}
+            color={favorited ? '#FF3B30' : COLORS.background}
+          />
         </TouchableOpacity>
 
         {product.imageUrls.length > 1 && (
@@ -231,6 +301,37 @@ export default function ProductDetailScreen() {
             <Text style={styles.description}>{product.description}</Text>
           </View>
         )}
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Đánh giá ({reviews.length})</Text>
+          {reviews.length === 0 ? (
+            <Text style={styles.reviewEmpty}>Chưa có đánh giá hiển thị</Text>
+          ) : (
+            reviews.map((rev) => (
+              <View key={rev.id} style={styles.reviewRow}>
+                <View style={styles.reviewTop}>
+                  <Text style={styles.reviewUser}>{rev.userName || 'Khách'}</Text>
+                  <View style={styles.reviewStars}>
+                    {[1, 2, 3, 4, 5].map((s) => (
+                      <Ionicons
+                        key={s}
+                        name={s <= rev.rating ? 'star' : 'star-outline'}
+                        size={14}
+                        color="#FFD700"
+                      />
+                    ))}
+                  </View>
+                </View>
+                {rev.comment ? (
+                  <Text style={styles.reviewComment}>{rev.comment}</Text>
+                ) : null}
+                <Text style={styles.reviewDate}>
+                  {new Date(rev.createdAt).toLocaleDateString('vi-VN')}
+                </Text>
+              </View>
+            ))
+          )}
+        </View>
       </ScrollView>
 
       <View style={styles.footer}>
@@ -265,6 +366,17 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: SIZES.xxl + 10,
     left: SIZES.lg,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  favButton: {
+    position: 'absolute',
+    top: SIZES.xxl + 10,
+    right: SIZES.lg,
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -430,5 +542,36 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: FONTS.size.md,
     color: COLORS.textSecondary,
+  },
+  reviewEmpty: {
+    fontSize: FONTS.size.sm,
+    color: COLORS.textSecondary,
+  },
+  reviewRow: {
+    paddingVertical: SIZES.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  reviewTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  reviewUser: {
+    fontSize: FONTS.size.sm,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  reviewStars: { flexDirection: 'row', gap: 2 },
+  reviewComment: {
+    marginTop: SIZES.xs,
+    fontSize: FONTS.size.sm,
+    color: COLORS.text,
+    lineHeight: 20,
+  },
+  reviewDate: {
+    marginTop: SIZES.xs,
+    fontSize: FONTS.size.xs,
+    color: COLORS.placeholder,
   },
 })

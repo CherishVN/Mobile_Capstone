@@ -6,19 +6,22 @@ import {
   ScrollView,
   Image,
   TouchableOpacity,
-  FlatList,
   Dimensions,
+  ActivityIndicator,
+  Alert,
 } from 'react-native'
-import { useRouter, useLocalSearchParams } from 'expo-router'
+import { useRouter, useLocalSearchParams, type Href } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { Ionicons } from '@expo/vector-icons'
 import { shopService } from '@/services/shop-service'
-import { productService } from '@/services/product-service'
 import { Shop } from '@/types/shop'
 import { Product } from '@/types/product'
+import { mapShopPublicToShop } from '@/utils/shop-mapper'
 import ProductCard from '@/components/ProductCard'
 import Loading from '@/components/Loading'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
+import { useAuthStore } from '@/store/auth-store'
+import { conversationService } from '@/services/conversation-service'
 
 const { width } = Dimensions.get('window')
 
@@ -26,10 +29,12 @@ export default function ShopDetailScreen() {
   const router = useRouter()
   const params = useLocalSearchParams()
   const slug = params.slug as string
+  const { isAuthenticated } = useAuthStore()
 
   const [shop, setShop] = useState<Shop | null>(null)
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
+  const [openingChat, setOpeningChat] = useState(false)
 
   useEffect(() => {
     loadShopData()
@@ -37,17 +42,22 @@ export default function ShopDetailScreen() {
 
   const loadShopData = async () => {
     try {
-      const [shopRes, productsRes] = await Promise.all([
-        shopService.getShopBySlug(slug),
-        productService.getProducts({ search: slug, pageSize: 20 }),
-      ])
-
-      if (shopRes.success && shopRes.data) {
-        setShop(shopRes.data)
+      const shopRes = await shopService.getShopBySlug(slug)
+      if (!shopRes.success || !shopRes.shop) {
+        setShop(null)
+        setProducts([])
+        return
       }
-      setProducts(productsRes.products)
+      const mapped = mapShopPublicToShop(shopRes.shop)
+      setShop(mapped)
+      const productsRes = await shopService.getShopProducts(mapped.id, {
+        pageSize: 40,
+        sortBy: 'newest',
+      })
+      setProducts(productsRes.products || [])
     } catch (error: any) {
       console.error('Failed to load shop:', error)
+      setShop(null)
     } finally {
       setLoading(false)
     }
@@ -63,6 +73,22 @@ export default function ShopDetailScreen() {
         <Text style={styles.errorText}>Không tìm thấy cửa hàng</Text>
       </View>
     )
+  }
+
+  const openShopChat = async () => {
+    if (!isAuthenticated) {
+      router.push('/auth/login')
+      return
+    }
+    setOpeningChat(true)
+    try {
+      const conv = await conversationService.startOrGet({ shopId: shop.id })
+      router.push(`/messages/${conv.id}` as Href)
+    } catch (e: any) {
+      Alert.alert('Chat', e?.message || 'Không mở được cuộc trò chuyện')
+    } finally {
+      setOpeningChat(false)
+    }
   }
 
   return (
@@ -91,6 +117,21 @@ export default function ShopDetailScreen() {
             )}
             <View style={styles.shopInfo}>
               <Text style={styles.shopName}>{shop.name}</Text>
+              <TouchableOpacity
+                style={styles.chatShopBtn}
+                onPress={openShopChat}
+                disabled={openingChat}
+                activeOpacity={0.8}
+              >
+                {openingChat ? (
+                  <ActivityIndicator size="small" color={COLORS.onPrimary} />
+                ) : (
+                  <>
+                    <Ionicons name="chatbubble-ellipses-outline" size={16} color={COLORS.onPrimary} />
+                    <Text style={styles.chatShopBtnText}>Chat với shop</Text>
+                  </>
+                )}
+              </TouchableOpacity>
               <View style={styles.statsRow}>
                 <View style={styles.stat}>
                   <Ionicons name="star" size={14} color="#FFD700" />
@@ -99,12 +140,12 @@ export default function ShopDetailScreen() {
                 <View style={styles.divider} />
                 <View style={styles.stat}>
                   <Ionicons name="cube-outline" size={14} color={COLORS.textSecondary} />
-                  <Text style={styles.statText}>{shop.totalProducts} SP</Text>
+                  <Text style={styles.statText}>{shop.productCount} SP</Text>
                 </View>
                 <View style={styles.divider} />
                 <View style={styles.stat}>
-                  <Ionicons name="bag-outline" size={14} color={COLORS.textSecondary} />
-                  <Text style={styles.statText}>{shop.totalSold}</Text>
+                  <Ionicons name="people-outline" size={14} color={COLORS.textSecondary} />
+                  <Text style={styles.statText}>{shop.followerCount}</Text>
                 </View>
               </View>
             </View>
@@ -202,6 +243,23 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: COLORS.text,
     marginBottom: SIZES.sm,
+  },
+  chatShopBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 8,
+    paddingHorizontal: SIZES.md,
+    borderRadius: 10,
+    marginBottom: SIZES.sm,
+    minHeight: 36,
+  },
+  chatShopBtnText: {
+    color: COLORS.onPrimary,
+    fontSize: FONTS.size.sm,
+    fontWeight: '600',
   },
   statsRow: {
     flexDirection: 'row',

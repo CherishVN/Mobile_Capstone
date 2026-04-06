@@ -10,7 +10,7 @@ import {
   Image,
   Dimensions,
 } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useRouter, type Href } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { Ionicons } from '@expo/vector-icons'
 import { productService } from '@/services/product-service'
@@ -21,6 +21,7 @@ import ProductCard from '@/components/ProductCard'
 import Loading from '@/components/Loading'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
 import { useCartStore } from '@/store/cart-store'
+import { useAuthStore } from '@/store/auth-store'
 
 const { width } = Dimensions.get('window')
 const CATEGORY_CARD_WIDTH = 80
@@ -33,6 +34,7 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const cartTotal = useCartStore((state) => state.getTotalItems())
+  const { isAuthenticated } = useAuthStore()
 
   const loadData = async () => {
     try {
@@ -42,16 +44,11 @@ export default function HomeScreen() {
         categoryService.getCategories(),
       ])
 
-      console.log('Featured products:', featuredRes)
-      console.log('New products:', newRes)
-      console.log('Categories response:', categoriesRes)
-
       setFeaturedProducts(featuredRes?.products || [])
       setNewProducts(newRes?.products || [])
       
       const categoryData = categoriesRes?.categories || []
-      console.log('Category data:', categoryData)
-      
+
       if (Array.isArray(categoryData)) {
         setCategories(
           categoryData
@@ -115,17 +112,29 @@ export default function HomeScreen() {
           <Text style={styles.greeting}>Xin chào!</Text>
           <Text style={styles.headerTitle}>Khám phá sản phẩm</Text>
         </View>
-        <TouchableOpacity
-          style={styles.cartButton}
-          onPress={() => router.push('/cart')}
-        >
-          <Ionicons name="cart-outline" size={28} color={COLORS.text} />
-          {cartTotal > 0 && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{cartTotal}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.headerIconBtn}
+            onPress={() =>
+              isAuthenticated
+                ? router.push('/assistant' as Href)
+                : router.push('/auth/login')
+            }
+          >
+            <Ionicons name="sparkles-outline" size={26} color={COLORS.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.cartButton}
+            onPress={() => router.push('/cart')}
+          >
+            <Ionicons name="cart-outline" size={28} color={COLORS.text} />
+            {cartTotal > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{cartTotal}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -218,6 +227,14 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: COLORS.text,
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SIZES.xs,
+  },
+  headerIconBtn: {
+    padding: SIZES.xs,
+  },
   cartButton: {
     position: 'relative',
     padding: SIZES.xs,
@@ -234,7 +251,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   badgeText: {
-    color: COLORS.background,
+    color: COLORS.onPrimary,
     fontSize: FONTS.size.xs,
     fontWeight: 'bold',
   },

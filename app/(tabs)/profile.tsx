@@ -8,18 +8,19 @@ import {
   Alert,
   RefreshControl,
 } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useRouter, type Href } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { Ionicons } from '@expo/vector-icons'
 import { userService } from '@/services/user-service'
 import { useAuthStore } from '@/store/auth-store'
 import { UserProfile } from '@/types/user'
 import Loading from '@/components/Loading'
+import Button from '@/components/Button'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
 
 export default function ProfileScreen() {
   const router = useRouter()
-  const { signOut } = useAuthStore()
+  const { signOut, isAuthenticated } = useAuthStore()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -39,8 +40,14 @@ export default function ProfileScreen() {
   }
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setProfile(null)
+      setLoading(false)
+      return
+    }
+    setLoading(true)
     loadProfile()
-  }, [])
+  }, [isAuthenticated])
 
   const onRefresh = () => {
     setRefreshing(true)
@@ -61,8 +68,28 @@ export default function ProfileScreen() {
     ])
   }
 
-  if (loading) {
+  if (loading && isAuthenticated) {
     return <Loading />
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <View style={styles.container}>
+        <StatusBar style="dark" />
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Tài khoản</Text>
+        </View>
+        <View style={styles.guestWrap}>
+          <Ionicons name="person-circle-outline" size={80} color={COLORS.textSecondary} />
+          <Text style={styles.guestTitle}>Đăng nhập để quản lý tài khoản</Text>
+          <Text style={styles.guestSub}>Địa chỉ, đơn hàng và cài đặt cá nhân.</Text>
+          <Button title="Đăng nhập" onPress={() => router.push('/auth/login')} style={styles.guestBtn} />
+          <TouchableOpacity onPress={() => router.push('/auth/register')} style={styles.registerLink}>
+            <Text style={styles.registerLinkText}>Chưa có tài khoản? Đăng ký</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    )
   }
 
   const menuItems = [
@@ -77,6 +104,11 @@ export default function ProfileScreen() {
       onPress: () => router.push('/profile/addresses'),
     },
     {
+      icon: 'heart-outline' as const,
+      title: 'Sản phẩm yêu thích',
+      onPress: () => router.push('/profile/favorites' as Href),
+    },
+    {
       icon: 'lock-closed-outline' as const,
       title: 'Đổi mật khẩu',
       onPress: () => router.push('/profile/change-password'),
@@ -84,7 +116,17 @@ export default function ProfileScreen() {
     {
       icon: 'notifications-outline' as const,
       title: 'Thông báo',
-      onPress: () => Alert.alert('Thông báo', 'Tính năng đang phát triển'),
+      onPress: () => router.push('/profile/notifications' as Href),
+    },
+    {
+      icon: 'sparkles-outline' as const,
+      title: 'Trợ lý mua hàng (AI)',
+      onPress: () => router.push('/assistant' as Href),
+    },
+    {
+      icon: 'chatbubbles-outline' as const,
+      title: 'Chat',
+      onPress: () => router.push('/messages' as Href),
     },
     {
       icon: 'help-circle-outline' as const,
@@ -189,7 +231,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: FONTS.size.xxxl,
     fontWeight: 'bold',
-    color: COLORS.background,
+    color: COLORS.onPrimary,
   },
   name: {
     fontSize: FONTS.size.lg,
@@ -249,5 +291,36 @@ const styles = StyleSheet.create({
   versionText: {
     fontSize: FONTS.size.xs,
     color: COLORS.textSecondary,
+  },
+  guestWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SIZES.xl,
+  },
+  guestTitle: {
+    fontSize: FONTS.size.lg,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginTop: SIZES.md,
+    textAlign: 'center',
+  },
+  guestSub: {
+    fontSize: FONTS.size.sm,
+    color: COLORS.textSecondary,
+    marginTop: SIZES.sm,
+    textAlign: 'center',
+  },
+  guestBtn: {
+    marginTop: SIZES.xl,
+    minWidth: 200,
+  },
+  registerLink: {
+    marginTop: SIZES.lg,
+  },
+  registerLinkText: {
+    fontSize: FONTS.size.sm,
+    color: COLORS.primary,
+    fontWeight: '600',
   },
 })

@@ -1,30 +1,48 @@
+/** Khớp backend OrderStatus (short) */
 export const OrderStatus = {
-  Pending: 0,
-  Confirmed: 1,
-  Shipping: 2,
-  Delivered: 3,
-  Cancelled: 4,
-  Refunded: 5,
+  PendingPayment: 0,
+  PendingConfirmation: 1,
+  Confirmed: 2,
+  Processing: 3,
+  Shipping: 4,
+  Delivered: 5,
+  Completed: 6,
+  Cancelled: 7,
+  Refunded: 8,
 } as const
 
 export type OrderStatusValue = (typeof OrderStatus)[keyof typeof OrderStatus]
 
-export const OrderStatusLabels: Record<OrderStatusValue, string> = {
-  [OrderStatus.Pending]: "Chờ xác nhận",
-  [OrderStatus.Confirmed]: "Đã xác nhận",
-  [OrderStatus.Shipping]: "Đang giao",
-  [OrderStatus.Delivered]: "Đã giao",
-  [OrderStatus.Cancelled]: "Đã hủy",
-  [OrderStatus.Refunded]: "Hoàn tiền",
+const LABELS_VI: Record<number, string> = {
+  [OrderStatus.PendingPayment]: 'Chờ thanh toán',
+  [OrderStatus.PendingConfirmation]: 'Chờ xác nhận',
+  [OrderStatus.Confirmed]: 'Đã xác nhận',
+  [OrderStatus.Processing]: 'Đang chuẩn bị',
+  [OrderStatus.Shipping]: 'Đang giao hàng',
+  [OrderStatus.Delivered]: 'Đã giao hàng',
+  [OrderStatus.Completed]: 'Hoàn thành',
+  [OrderStatus.Cancelled]: 'Đã hủy',
+  [OrderStatus.Refunded]: 'Hoàn tiền',
 }
 
-export const OrderStatusColors: Record<OrderStatusValue, string> = {
-  [OrderStatus.Pending]: "#FFA500",
-  [OrderStatus.Confirmed]: "#4169E1",
-  [OrderStatus.Shipping]: "#9370DB",
-  [OrderStatus.Delivered]: "#32CD32",
-  [OrderStatus.Cancelled]: "#DC143C",
-  [OrderStatus.Refunded]: "#808080",
+export function getOrderStatusLabelVi(status: number): string {
+  return LABELS_VI[status] ?? 'Không xác định'
+}
+
+export const OrderStatusColors: Record<number, string> = {
+  [OrderStatus.PendingPayment]: '#FF9500',
+  [OrderStatus.PendingConfirmation]: '#FF9500',
+  [OrderStatus.Confirmed]: '#007AFF',
+  [OrderStatus.Processing]: '#5856D6',
+  [OrderStatus.Shipping]: '#AF52DE',
+  [OrderStatus.Delivered]: '#34C759',
+  [OrderStatus.Completed]: '#34C759',
+  [OrderStatus.Cancelled]: '#FF3B30',
+  [OrderStatus.Refunded]: '#8E8E93',
+}
+
+export function getOrderStatusColor(status: number): string {
+  return OrderStatusColors[status] ?? '#8E8E93'
 }
 
 export interface OrderItem {
@@ -37,14 +55,16 @@ export interface OrderItem {
   unitPrice: number
   quantity: number
   lineTotal: number
+  hasReviewedByUser?: boolean
 }
 
 export interface Order {
   id: string
   orderCode: string
   shopId: string
+  shopSlug: string
   shopName: string
-  status: OrderStatusValue
+  status: number
   statusName: string
   subtotal: number
   shippingFee: number
@@ -52,5 +72,5 @@ export interface Order {
   items: OrderItem[]
   shippingAddress: string
   createdAt: string
-  updatedAt: string
+  updatedAt?: string
 }
