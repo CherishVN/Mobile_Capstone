@@ -18,20 +18,34 @@ import { Order, OrderStatus, getOrderStatusColor } from '@/types/order'
 import Button from '@/components/Button'
 import Loading from '@/components/Loading'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
+import { useAuthStore } from '@/store/auth-store'
+import ProductReviewOrderModal from '@/components/ProductReviewOrderModal'
+import ShopReviewOrderModal, {
+  hasStoredShopReviewForOrder,
+} from '@/components/ShopReviewOrderModal'
 
 export default function OrderDetailScreen() {
   const router = useRouter()
   const params = useLocalSearchParams()
   const orderId = params.id as string
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
 
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
   const [cancelling, setCancelling] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [paying, setPaying] = useState(false)
+  const [shopReviewStored, setShopReviewStored] = useState(false)
+  const [productReviewOpen, setProductReviewOpen] = useState(false)
+  const [shopReviewOpen, setShopReviewOpen] = useState(false)
 
   useEffect(() => {
     loadOrder()
+  }, [orderId])
+
+  useEffect(() => {
+    if (!orderId) return
+    hasStoredShopReviewForOrder(orderId).then(setShopReviewStored)
   }, [orderId])
 
   const loadOrder = async () => {
@@ -148,6 +162,11 @@ export default function OrderDetailScreen() {
   const canCancelPending = order.status === OrderStatus.PendingPayment
   const canPay = order.status === OrderStatus.PendingPayment
   const canConfirmReceive = order.status === OrderStatus.Shipping
+  const isCompleted = order.status === OrderStatus.Completed
+  const canReviewProducts =
+    isAuthenticated && isCompleted && order.items.some((i) => i.hasReviewedByUser !== true)
+  const canReviewShop = isAuthenticated && isCompleted && !shopReviewStored
+  const showReviewActions = canReviewProducts || canReviewShop
 
   const goShop = () => {
     if (order.shopSlug) {
@@ -214,6 +233,9 @@ export default function OrderDetailScreen() {
                   {item.productName}
                 </Text>
                 {item.variantName && <Text style={styles.productVariant}>{item.variantName}</Text>}
+                {isCompleted && item.hasReviewedByUser !== true && (
+                  <Text style={styles.reviewHint}>Chưa đánh giá sản phẩm</Text>
+                )}
                 <View style={styles.productFooter}>
                   <Text style={styles.productPrice}>{formatPrice(item.unitPrice)}</Text>
                   <Text style={styles.productQuantity}>x{item.quantity}</Text>
@@ -248,7 +270,7 @@ export default function OrderDetailScreen() {
         </View>
       </ScrollView>
 
-      {(canPay || canCancelPending || canConfirmReceive) && (
+      {(canPay || canCancelPending || canConfirmReceive || showReviewActions) && (
         <View style={styles.footer}>
           {canPay && (
             <>
@@ -287,7 +309,47 @@ export default function OrderDetailScreen() {
               fullWidth
             />
           )}
+          {canReviewProducts && (
+            <Button
+              title="Đánh giá sản phẩm"
+              onPress={() => setProductReviewOpen(true)}
+              variant="outline"
+              fullWidth
+              size="lg"
+            />
+          )}
+          {canReviewShop && (
+            <Button
+              title="Đánh giá cửa hàng"
+              onPress={() => setShopReviewOpen(true)}
+              variant="outline"
+              fullWidth
+              size="lg"
+            />
+          )}
         </View>
+      )}
+
+      {order && (
+        <>
+          <ProductReviewOrderModal
+            visible={productReviewOpen}
+            order={order}
+            onClose={() => setProductReviewOpen(false)}
+            onSuccess={() => loadOrder()}
+          />
+          <ShopReviewOrderModal
+            visible={shopReviewOpen}
+            orderId={order.id}
+            shopId={order.shopId}
+            shopName={order.shopName}
+            onClose={() => setShopReviewOpen(false)}
+            onSuccess={() => {
+              setShopReviewStored(true)
+              loadOrder()
+            }}
+          />
+        </>
       )}
     </View>
   )
@@ -405,6 +467,12 @@ const styles = StyleSheet.create({
   productVariant: {
     fontSize: FONTS.size.xs,
     color: COLORS.textSecondary,
+  },
+  reviewHint: {
+    fontSize: FONTS.size.xs,
+    color: COLORS.primary,
+    marginTop: 4,
+    fontWeight: '600',
   },
   productFooter: {
     flexDirection: 'row',

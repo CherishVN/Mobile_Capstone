@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useRef, useState } from 'react'
 import {
   View,
   Text,
@@ -15,8 +15,17 @@ import { Ionicons } from '@expo/vector-icons'
 import { useAuthStore } from '@/store/auth-store'
 import { conversationService } from '@/services/conversation-service'
 import type { ConversationDto } from '@/types/conversation'
+import { useChatRealtime, useChatRealtimeContext } from '@/contexts/chat-realtime-context'
 import Button from '@/components/Button'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
+
+function sortConversations(list: ConversationDto[]) {
+  return [...list].sort((a, b) => {
+    const aTime = a.lastMessage?.createdAt ?? a.createdAt
+    const bTime = b.lastMessage?.createdAt ?? b.createdAt
+    return new Date(bTime).getTime() - new Date(aTime).getTime()
+  })
+}
 
 function formatTime(iso: string | undefined) {
   if (!iso) return ''
@@ -35,6 +44,7 @@ function formatTime(iso: string | undefined) {
 export default function MessagesListScreen() {
   const router = useRouter()
   const { isAuthenticated } = useAuthStore()
+  const { getActiveConversationId } = useChatRealtimeContext()
   const [items, setItems] = useState<ConversationDto[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -51,6 +61,45 @@ export default function MessagesListScreen() {
       setRefreshing(false)
     }
   }, [])
+
+  const loadRef = useRef(load)
+  loadRef.current = load
+
+  useChatRealtime({
+    onConversationUpdated: (incoming) => {
+      if (!incoming?.id) return
+      setItems((prev) => {
+        const idx = prev.findIndex((c) => c.id === incoming.id)
+        if (idx < 0) return sortConversations([incoming, ...prev])
+        const next = [...prev]
+        next[idx] = { ...next[idx], ...incoming }
+        return sortConversations(next)
+      })
+    },
+    onChatMessageReceived: ({ conversationId: cid, message: incoming }) => {
+      if (!cid || !incoming) return
+      const uid = useAuthStore.getState().user?.id
+      const activeId = getActiveConversationId()
+      setItems((prev) => {
+        if (!prev.some((c) => c.id === cid)) {
+          void loadRef.current()
+          return prev
+        }
+        return sortConversations(
+          prev.map((c) => {
+            if (c.id !== cid) return c
+            const viewing = activeId === cid
+            const fromSelf = incoming.senderId === uid
+            const nextUnread = viewing || fromSelf ? 0 : (c.unreadCount ?? 0) + 1
+            return { ...c, lastMessage: incoming, unreadCount: nextUnread }
+          })
+        )
+      })
+    },
+    onReconnected: () => {
+      void loadRef.current()
+    },
+  })
 
   useFocusEffect(
     useCallback(() => {

@@ -11,11 +11,12 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native'
-import { useRouter, useLocalSearchParams } from 'expo-router'
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { Ionicons } from '@expo/vector-icons'
 import { useAuthStore } from '@/store/auth-store'
 import { conversationService } from '@/services/conversation-service'
+import { useChatRealtime, useChatRealtimeContext } from '@/contexts/chat-realtime-context'
 import type { ChatMessageDto, ConversationDto } from '@/types/conversation'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
 
@@ -23,8 +24,11 @@ export default function ConversationChatScreen() {
   const router = useRouter()
   const params = useLocalSearchParams()
   const conversationId = params.conversationId as string
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, user } = useAuthStore()
+  const { setActiveConversationId } = useChatRealtimeContext()
   const listRef = useRef<FlatList>(null)
+  const userIdRef = useRef(user?.id)
+  userIdRef.current = user?.id
 
   const [conversation, setConversation] = useState<ConversationDto | null>(null)
   const [messages, setMessages] = useState<ChatMessageDto[]>([])
@@ -61,6 +65,35 @@ export default function ConversationChatScreen() {
     load()
   }, [load])
 
+  useFocusEffect(
+    useCallback(() => {
+      setActiveConversationId(conversationId)
+      return () => setActiveConversationId(null)
+    }, [conversationId, setActiveConversationId])
+  )
+
+  const loadRef = useRef(load)
+  loadRef.current = load
+
+  useChatRealtime({
+    onChatMessageReceived: ({ conversationId: cid, message }) => {
+      if (!message || cid !== conversationId) return
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === message.id)) return prev
+        return [...prev, message].sort(
+          (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        )
+      })
+      const uid = userIdRef.current
+      if (uid && message.senderId !== uid) {
+        void conversationService.markAsRead(conversationId)
+      }
+    },
+    onReconnected: () => {
+      void loadRef.current()
+    },
+  })
+
   useEffect(() => {
     setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 200)
   }, [messages.length, loading])
@@ -85,7 +118,7 @@ export default function ConversationChatScreen() {
     try {
       const saved = await conversationService.sendMessage(conversationId, text)
       setMessages((prev) => {
-        const without = prev.filter((m) => m.id !== optimistic.id)
+        const without = prev.filter((m) => m.id !== optimistic.id && m.id !== saved.id)
         return [...without, saved].sort(
           (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
         )

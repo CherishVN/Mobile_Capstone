@@ -1,8 +1,11 @@
 import { aiApi } from '@/lib/ai-api-client'
+import { api } from '@/lib/api-client'
 import type {
   AiChatConfirmOrderResponse,
   AiChatSendResponse,
   AiChatSessionResponse,
+  AiSessionsListResponse,
+  AiSessionMessagesResponse,
 } from '@/types/ai-chat'
 
 export const aiChatService = {
@@ -24,4 +27,25 @@ export const aiChatService = {
       cartId,
       shippingAddressId,
     }),
+
+  /** ECommerceAPI — lịch sử phiên trong DB */
+  listSessions: (page = 1, pageSize = 20) =>
+    api.get<AiSessionsListResponse>(`/api/ai/sessions?page=${page}&pageSize=${pageSize}`),
+
+  getSessionMessages: (sessionId: string) =>
+    api.get<AiSessionMessagesResponse>(`/api/ai/sessions/${sessionId}/messages`),
+
+  markSessionRead: (sessionId: string) =>
+    api.post<{ success: boolean; sessionId: string; unreadCount: number }>(
+      `/api/ai/sessions/${sessionId}/read`
+    ),
+
+  setSessionMuted: (sessionId: string, isMuted: boolean) =>
+    api.patch<{ success: boolean; sessionId: string; isMuted: boolean }>(
+      `/api/ai/sessions/${sessionId}/mute`,
+      { isMuted }
+    ),
+
+  deleteSession: (sessionId: string) =>
+    api.delete<{ success: boolean; sessionId: string }>(`/api/ai/sessions/${sessionId}`),
 }

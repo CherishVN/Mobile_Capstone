@@ -13,5 +13,6 @@ export function mapShopPublicToShop(s: ShopPublicDto): Shop {
     averageRating: s.averageRating,
     reviewCount: s.reviewCount,
     createdAt: s.createdAt,
+    isFollowing: s.isFollowing ?? false,
   }
 }
