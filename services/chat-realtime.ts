@@ -3,7 +3,7 @@ import {
   HubConnectionBuilder,
   HttpTransportType,
   LogLevel,
-} from '@microsoft/signalr'
+} from '@microsoft/signalr/dist/esm/index'
 import { CONFIG } from '@/config'
 import type { ChatMessageDto, ConversationDto } from '@/types/conversation'
 

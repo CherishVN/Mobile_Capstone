@@ -6,7 +6,7 @@ import React, {
   useMemo,
   useRef,
 } from 'react'
-import type { HubConnection } from '@microsoft/signalr'
+import type { HubConnection } from '@microsoft/signalr/dist/esm/index'
 import { useAuthStore } from '@/store/auth-store'
 import { getAccessToken } from '@/lib/supabase'
 import {
