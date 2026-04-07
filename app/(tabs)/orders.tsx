@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useMemo } from 'react'
+import React, { useEffect, useState, useMemo, useCallback } from 'react'
+import { useFocusEffect } from '@react-navigation/native'
 import {
   View,
   Text,
@@ -25,6 +26,8 @@ import ReviewModal from '@/components/ReviewModal'
 import Loading from '@/components/Loading'
 import Button from '@/components/Button'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
+import { markPendingPaymentOrder } from '@/lib/pending-payment'
+import { startVnPayInAppSession } from '@/lib/vnpay-in-app'
 
 /* ── Status tabs (khớp web 9 tabs) ── */
 const STATUS_TABS: { label: string; value: number | undefined }[] = [
@@ -104,6 +107,21 @@ export default function OrdersScreen() {
     loadOrders()
   }, [isAuthenticated])
 
+  /** Làm mới khi quay lại tab (sau thanh toán / chi tiết đơn) — không cần reload cả app. */
+  useFocusEffect(
+    useCallback(() => {
+      if (!isAuthenticated) return
+      void (async () => {
+        try {
+          const response = await orderService.getMyOrders({ pageSize: 100 })
+          if (response.success) setAllOrders(response.orders)
+        } catch {
+          /* giữ danh sách cũ */
+        }
+      })()
+    }, [isAuthenticated])
+  )
+
   const onRefresh = () => {
     setRefreshing(true)
     loadOrders()
@@ -172,14 +190,23 @@ export default function OrdersScreen() {
   const handlePayNow = async (order: Order, method: 'vnpay' | 'momo') => {
     setPayingId(order.id)
     try {
-      const payFn = method === 'momo' ? paymentService.createMoMo : paymentService.createVNPay
-      const res = await payFn(order.id)
-      if (res.success && res.paymentUrl) {
-        const can = await Linking.canOpenURL(res.paymentUrl)
-        if (can) await Linking.openURL(res.paymentUrl)
-        else Alert.alert('Lỗi', 'Không mở được trình duyệt thanh toán')
+      if (method === 'vnpay') {
+        await markPendingPaymentOrder(order.id)
+        const r = await startVnPayInAppSession(order.id)
+        if (r.kind === 'error') {
+          Alert.alert('Lỗi', r.message || 'Không thể tạo giao dịch')
+        }
+        await loadOrders()
       } else {
-        Alert.alert('Lỗi', res.message || 'Không thể tạo giao dịch')
+        const res = await paymentService.createMoMo(order.id)
+        if (res.success && res.paymentUrl) {
+          await markPendingPaymentOrder(order.id)
+          const can = await Linking.canOpenURL(res.paymentUrl)
+          if (can) await Linking.openURL(res.paymentUrl)
+          else Alert.alert('Lỗi', 'Không mở được trình duyệt thanh toán')
+        } else {
+          Alert.alert('Lỗi', res.message || 'Không thể tạo giao dịch')
+        }
       }
     } catch (error: any) {
       Alert.alert('Lỗi', error.message || 'Thanh toán thất bại')
@@ -419,26 +446,29 @@ export default function OrdersScreen() {
         )}
       </View>
 
-      {/* Status tabs */}
+      {/* Status tabs — không dùng gap (Android cắt chip); padding ngang khớp ô tìm kiếm */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.tabsRow}
         style={styles.tabsScroll}
+        nestedScrollEnabled
       >
         {STATUS_TABS.map((tab, index) => (
           <TouchableOpacity
             key={index}
-            style={[styles.tab, activeTab === index && styles.tabActive]}
+            style={[
+              styles.tab,
+              activeTab === index && styles.tabActive,
+              index < STATUS_TABS.length - 1 && styles.tabSpacing,
+            ]}
             onPress={() => {
               setActiveTab(index)
               setSearchText('')
             }}
             activeOpacity={0.7}
           >
-            <Text style={[styles.tabText, activeTab === index && styles.tabTextActive]}>
-              {tab.label}
-            </Text>
+            <Text style={[styles.tabText, activeTab === index && styles.tabTextActive]}>{tab.label}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -515,7 +545,7 @@ const styles = StyleSheet.create({
   },
   /* Tabs */
   tabsScroll: {
-    maxHeight: 52,
+    flexGrow: 0,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
     backgroundColor: COLORS.card,
@@ -523,15 +553,21 @@ const styles = StyleSheet.create({
   tabsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SIZES.sm,
-    paddingVertical: SIZES.xs,
-    gap: SIZES.xs,
+    paddingLeft: SIZES.lg,
+    paddingRight: SIZES.lg,
+    paddingVertical: SIZES.sm,
+    minHeight: 48,
   },
   tab: {
-    paddingHorizontal: SIZES.md,
-    paddingVertical: SIZES.sm,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderRadius: 20,
     backgroundColor: COLORS.background,
+    overflow: 'visible',
+    flexShrink: 0,
+  },
+  tabSpacing: {
+    marginRight: SIZES.sm,
   },
   tabActive: {
     backgroundColor: COLORS.primary,

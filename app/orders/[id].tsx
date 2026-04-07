@@ -22,6 +22,8 @@ import Button from '@/components/Button'
 import Loading from '@/components/Loading'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
 import { useAuthStore } from '@/store/auth-store'
+import { markPendingPaymentOrder } from '@/lib/pending-payment'
+import { startVnPayInAppSession } from '@/lib/vnpay-in-app'
 import ProductReviewOrderModal from '@/components/ProductReviewOrderModal'
 import ShopReviewOrderModal, {
   hasStoredShopReviewForOrder,
@@ -117,16 +119,23 @@ export default function OrderDetailScreen() {
   const openPaymentUrl = async (kind: 'vnpay' | 'momo') => {
     setPaying(true)
     try {
-      const res =
-        kind === 'vnpay'
-          ? await paymentService.createVNPay(orderId)
-          : await paymentService.createMoMo(orderId)
-      if (res.success && res.paymentUrl) {
-        const can = await Linking.canOpenURL(res.paymentUrl)
-        if (can) await Linking.openURL(res.paymentUrl)
-        else Alert.alert('Lỗi', 'Không mở được trình duyệt thanh toán')
+      if (kind === 'vnpay') {
+        await markPendingPaymentOrder(orderId)
+        const r = await startVnPayInAppSession(orderId)
+        if (r.kind === 'error') {
+          Alert.alert('Lỗi', r.message || 'Không tạo được link thanh toán')
+        }
+        await loadOrder()
       } else {
-        Alert.alert('Lỗi', res.message || 'Không tạo được link thanh toán')
+        const res = await paymentService.createMoMo(orderId)
+        if (res.success && res.paymentUrl) {
+          await markPendingPaymentOrder(orderId)
+          const can = await Linking.canOpenURL(res.paymentUrl)
+          if (can) await Linking.openURL(res.paymentUrl)
+          else Alert.alert('Lỗi', 'Không mở được trình duyệt thanh toán')
+        } else {
+          Alert.alert('Lỗi', res.message || 'Không tạo được link thanh toán')
+        }
       }
     } catch (error: any) {
       Alert.alert('Lỗi', error.message || 'Thanh toán thất bại')

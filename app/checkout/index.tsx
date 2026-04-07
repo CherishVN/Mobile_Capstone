@@ -17,6 +17,7 @@ import { cartService } from '@/services/cart-service'
 import { userService } from '@/services/user-service'
 import { orderService } from '@/services/order-service'
 import { paymentService } from '@/services/payment-service'
+import { startVnPayInAppSession } from '@/lib/vnpay-in-app'
 import { productService } from '@/services/product-service'
 import { Cart, CartItem } from '@/types/cart'
 import { Address } from '@/types/user'
@@ -25,6 +26,7 @@ import Loading from '@/components/Loading'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
 import { useAuthStore } from '@/store/auth-store'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { markPendingPaymentOrder } from '@/lib/pending-payment'
 
 const CHECKOUT_SELECTED_IDS_KEY = 'checkout:selected-item-ids'
 const SHIPPING_FEE_PER_SHOP = 30000
@@ -224,22 +226,32 @@ export default function CheckoutScreen() {
       }
 
       // Auto-pay with selected method
+      let skipGoToOrders = false
       try {
-        const payFn =
-          paymentMethod === 'momo'
-            ? paymentService.createMoMo
-            : paymentService.createVNPay
-        const payRes = await payFn(firstOrderId)
-        if (payRes.success && payRes.paymentUrl) {
-          await Linking.openURL(payRes.paymentUrl)
+        if (paymentMethod === 'vnpay') {
+          await markPendingPaymentOrder(firstOrderId)
+          const vn = await startVnPayInAppSession(firstOrderId)
+          if (vn.kind === 'error') {
+            Alert.alert('Lỗi', vn.message || `Không thể tạo giao dịch ${label}`)
+          } else if (vn.kind === 'opened') {
+            skipGoToOrders = true
+          }
         } else {
-          Alert.alert('Lỗi', payRes.message || `Không thể tạo giao dịch ${label}`)
+          const payRes = await paymentService.createMoMo(firstOrderId)
+          if (payRes.success && payRes.paymentUrl) {
+            await markPendingPaymentOrder(firstOrderId)
+            await Linking.openURL(payRes.paymentUrl)
+          } else {
+            Alert.alert('Lỗi', payRes.message || `Không thể tạo giao dịch ${label}`)
+          }
         }
       } catch {
         // Payment failed but order was created
       }
 
-      router.replace('/(tabs)/orders')
+      if (!skipGoToOrders) {
+        router.replace('/(tabs)/orders')
+      }
     } catch (error: any) {
       Alert.alert('Lỗi', error.message || 'Không thể đặt hàng')
     } finally {

@@ -10,13 +10,17 @@
       "resizeMode": "contain",
       "backgroundColor": "#007AFF"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ecommerce.customer"
     },
     "android": {
       "package": "com.ecommerce.customer",
+      "softwareKeyboardLayoutMode": "resize",
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#007AFF"
       }
