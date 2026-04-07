@@ -2,16 +2,28 @@ import { useEffect } from 'react'
 import { Stack } from 'expo-router'
 import * as WebBrowser from 'expo-web-browser'
 import { useAuthStore } from '@/store/auth-store'
+import { useNotificationStore } from '@/store/notification-store'
 import PaymentReturnListener from '@/components/PaymentReturnListener'
 
 WebBrowser.maybeCompleteAuthSession()
 
 export default function RootLayout() {
   const initialize = useAuthStore((state) => state.initialize)
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const { startPolling, stopPolling } = useNotificationStore()
 
   useEffect(() => {
     initialize()
   }, [])
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      startPolling()
+    } else {
+      stopPolling()
+    }
+    return () => stopPolling()
+  }, [isAuthenticated])
 
   return (
     <>

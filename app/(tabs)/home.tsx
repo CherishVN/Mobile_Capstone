@@ -23,6 +23,7 @@ import Loading from '@/components/Loading'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
 import { useCartStore } from '@/store/cart-store'
 import { useAuthStore } from '@/store/auth-store'
+import { useNotificationStore } from '@/store/notification-store'
 
 const { width } = Dimensions.get('window')
 
@@ -82,6 +83,7 @@ export default function HomeScreen() {
 
   const cartTotal = useCartStore((state) => state.cart?.items?.length || 0)
   const { isAuthenticated } = useAuthStore()
+  const unreadCount = useNotificationStore((s) => s.unreadCount)
 
   const loadData = async () => {
     try {
@@ -185,6 +187,21 @@ export default function HomeScreen() {
             }
           >
             <Ionicons name="sparkles-outline" size={24} color={COLORS.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerIconBtn}
+            onPress={() =>
+              isAuthenticated
+                ? router.push('/profile/notifications' as Href)
+                : router.push('/auth/login')
+            }
+          >
+            <Ionicons name="notifications-outline" size={24} color={COLORS.text} />
+            {unreadCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+              </View>
+            )}
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.cartButton}

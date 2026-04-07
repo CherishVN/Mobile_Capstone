@@ -14,6 +14,7 @@ import { StatusBar } from 'expo-status-bar'
 import { Ionicons } from '@expo/vector-icons'
 import { userService } from '@/services/user-service'
 import { useAuthStore } from '@/store/auth-store'
+import { useNotificationStore } from '@/store/notification-store'
 import { supabase } from '@/lib/supabase'
 import { UserProfile } from '@/types/user'
 import Loading from '@/components/Loading'
@@ -23,6 +24,7 @@ import { COLORS, SIZES, FONTS } from '@/constants/theme'
 export default function ProfileScreen() {
   const router = useRouter()
   const { signOut, isAuthenticated } = useAuthStore()
+  const unreadCount = useNotificationStore((s) => s.unreadCount)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -148,6 +150,7 @@ export default function ProfileScreen() {
     {
       icon: 'notifications-outline' as const,
       title: 'Thông báo',
+      badge: unreadCount > 0 ? (unreadCount > 99 ? '99+' : String(unreadCount)) : undefined,
       onPress: () => router.push('/profile/notifications' as Href),
     },
     {
@@ -216,7 +219,14 @@ export default function ProfileScreen() {
                 </View>
                 <Text style={styles.menuTitle}>{item.title}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+              <View style={styles.menuRight}>
+                {'badge' in item && item.badge && (
+                  <View style={styles.menuBadge}>
+                    <Text style={styles.menuBadgeText}>{item.badge}</Text>
+                  </View>
+                )}
+                <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+              </View>
             </TouchableOpacity>
           ))}
         </View>
@@ -340,6 +350,25 @@ const styles = StyleSheet.create({
   menuTitle: {
     fontSize: FONTS.size.md,
     color: COLORS.text,
+  },
+  menuRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SIZES.sm,
+  },
+  menuBadge: {
+    backgroundColor: COLORS.error,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+  },
+  menuBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 'bold',
   },
   signOutButton: {
     flexDirection: 'row',

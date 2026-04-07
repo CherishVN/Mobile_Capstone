@@ -13,13 +13,30 @@ import { Ionicons } from '@expo/vector-icons'
 import { notificationService } from '@/services/notification-service'
 import { AppNotification } from '@/types/notification'
 import { useAuthStore } from '@/store/auth-store'
+import { useNotificationStore } from '@/store/notification-store'
 import Loading from '@/components/Loading'
 import Button from '@/components/Button'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
 
+const NOTIF_ICONS: Record<string, { name: keyof typeof Ionicons.glyphMap; color: string }> = {
+  Order: { name: 'receipt-outline', color: '#3b82f6' },
+  Payment: { name: 'card-outline', color: '#22c55e' },
+  Promotion: { name: 'pricetag-outline', color: '#f59e0b' },
+  Review: { name: 'star-outline', color: '#a855f7' },
+  Chat: { name: 'chatbubble-outline', color: '#06b6d4' },
+  Shop: { name: 'storefront-outline', color: '#ec4899' },
+  Dispute: { name: 'warning-outline', color: '#ef4444' },
+  System: { name: 'information-circle-outline', color: '#6b7280' },
+}
+
+function getNotifIcon(type: string) {
+  return NOTIF_ICONS[type] || NOTIF_ICONS.System
+}
+
 export default function NotificationsScreen() {
   const router = useRouter()
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const { setUnreadCount } = useNotificationStore()
   const [items, setItems] = useState<AppNotification[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -33,7 +50,10 @@ export default function NotificationsScreen() {
     }
     try {
       const res = await notificationService.getNotifications({ pageSize: 50 })
-      if (res.success) setItems(res.notifications || [])
+      if (res.success) {
+        setItems(res.notifications || [])
+        setUnreadCount(res.unreadCount)
+      }
     } catch (e) {
       console.error('Notifications:', e)
       setItems([])
@@ -55,6 +75,7 @@ export default function NotificationsScreen() {
         setItems((prev) =>
           prev.map((x) => (x.id === n.id ? { ...x, isRead: true } : x))
         )
+        setUnreadCount(Math.max(0, useNotificationStore.getState().unreadCount - 1))
       } catch {
         /* empty */
       }
@@ -68,6 +89,7 @@ export default function NotificationsScreen() {
     try {
       await notificationService.markAllRead()
       setItems((prev) => prev.map((x) => ({ ...x, isRead: true })))
+      setUnreadCount(0)
     } catch {
       /* empty */
     }
@@ -123,22 +145,32 @@ export default function NotificationsScreen() {
             <Text style={styles.emptyText}>Chưa có thông báo</Text>
           </View>
         }
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[styles.card, !item.isRead && styles.cardUnread]}
-            onPress={() => onPressItem(item)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.cardTop}>
-              <Text style={styles.title}>{item.title}</Text>
-              {!item.isRead && <View style={styles.dot} />}
-            </View>
-            <Text style={styles.content}>{item.content}</Text>
-            <Text style={styles.time}>
-              {new Date(item.createdAt).toLocaleString('vi-VN')}
-            </Text>
-          </TouchableOpacity>
-        )}
+        renderItem={({ item }) => {
+          const icon = getNotifIcon(item.type)
+          return (
+            <TouchableOpacity
+              style={[styles.card, !item.isRead && styles.cardUnread]}
+              onPress={() => onPressItem(item)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.cardRow}>
+                <View style={[styles.iconCircle, { backgroundColor: icon.color + '18' }]}>
+                  <Ionicons name={icon.name} size={22} color={icon.color} />
+                </View>
+                <View style={styles.cardBody}>
+                  <View style={styles.cardTop}>
+                    <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
+                    {!item.isRead && <View style={styles.dot} />}
+                  </View>
+                  <Text style={styles.content} numberOfLines={2}>{item.content}</Text>
+                  <Text style={styles.time}>
+                    {new Date(item.createdAt).toLocaleString('vi-VN')}
+                  </Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          )
+        }}
         contentContainerStyle={styles.list}
       />
     </View>
@@ -171,6 +203,16 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   cardUnread: { borderColor: COLORS.primary, backgroundColor: COLORS.background },
+  cardRow: { flexDirection: 'row', gap: SIZES.md },
+  iconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  cardBody: { flex: 1 },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { flex: 1, fontSize: FONTS.size.md, fontWeight: '600', color: COLORS.text },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.primary, marginLeft: SIZES.sm },
