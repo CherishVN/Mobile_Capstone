@@ -4,12 +4,12 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  Platform,
   Alert,
   TouchableOpacity,
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
+import { Ionicons } from '@expo/vector-icons'
 import Button from '@/components/Button'
 import Input from '@/components/Input'
 import { authService } from '@/services/auth-service'
@@ -105,6 +105,21 @@ export default function LoginScreen() {
             size="lg"
           />
 
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>hoặc</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <Button
+            title="  Tiếp tục với Google"
+            onPress={() => router.push('/auth/google')}
+            fullWidth
+            size="lg"
+            variant="outline"
+            icon={<Ionicons name="logo-google" size={20} color={COLORS.text} />}
+          />
+
           <View style={styles.footer}>
             <Text style={styles.footerText}>Chưa có tài khoản? </Text>
             <TouchableOpacity onPress={() => router.push('/auth/register')}>
@@ -166,5 +181,20 @@ const styles = StyleSheet.create({
     fontSize: FONTS.size.md,
     color: COLORS.primary,
     fontWeight: '600',
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: SIZES.sm,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: COLORS.border,
+  },
+  dividerText: {
+    paddingHorizontal: SIZES.md,
+    fontSize: FONTS.size.sm,
+    color: COLORS.textSecondary,
   },
 })

@@ -15,7 +15,12 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.ecommerce.customer"
+      "bundleIdentifier": "com.ecommerce.customer",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
     },
     "android": {
       "package": "com.ecommerce.customer",
@@ -29,7 +34,8 @@
       "bundler": "metro"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-web-browser"
     ],
     "scheme": "ecommerce",
     "experiments": {

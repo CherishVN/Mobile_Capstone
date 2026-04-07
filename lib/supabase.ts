@@ -1,3 +1,4 @@
+import '@/lib/crypto-polyfill'
 import { createClient } from '@supabase/supabase-js'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { CONFIG } from '@/config'
@@ -9,6 +10,7 @@ export const supabase = createClient(CONFIG.supabase.url, CONFIG.supabase.anonKe
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
+    flowType: 'pkce',
   },
 })
 

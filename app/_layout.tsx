@@ -1,7 +1,10 @@
 import { useEffect } from 'react'
 import { Stack } from 'expo-router'
+import * as WebBrowser from 'expo-web-browser'
 import { useAuthStore } from '@/store/auth-store'
 import PaymentReturnListener from '@/components/PaymentReturnListener'
+
+WebBrowser.maybeCompleteAuthSession()
 
 export default function RootLayout() {
   const initialize = useAuthStore((state) => state.initialize)
@@ -18,6 +21,8 @@ export default function RootLayout() {
         <Stack.Screen name="auth/login" />
         <Stack.Screen name="auth/register" />
         <Stack.Screen name="auth/forgot-password" />
+        <Stack.Screen name="auth/callback" />
+        <Stack.Screen name="auth/google" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="products/[slug]" />
         <Stack.Screen name="products/index" />
