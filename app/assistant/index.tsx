@@ -1054,6 +1054,11 @@ const styles = StyleSheet.create({
   productBlocks: {
     marginTop: SIZES.sm,
     gap: SIZES.sm,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.chatBubbleBorder,
+    borderRadius: 16,
+    padding: SIZES.sm,
   },
   
   productRowCard: {

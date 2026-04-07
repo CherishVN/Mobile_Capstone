@@ -546,6 +546,8 @@ const styles = StyleSheet.create({
   /* Tabs */
   tabsScroll: {
     flexGrow: 0,
+    flexShrink: 0,
+    minHeight: 54,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
     backgroundColor: COLORS.card,

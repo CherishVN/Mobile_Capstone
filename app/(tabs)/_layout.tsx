@@ -19,7 +19,7 @@ export default function TabsLayout() {
           backgroundColor: COLORS.card,
           borderTopColor: COLORS.border,
           borderTopWidth: 1,
-          height: 40 + insets.bottom,
+          height: 45 + insets.bottom,
           paddingBottom: 8 + insets.bottom,
           paddingTop: 8,
         },
