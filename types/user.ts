@@ -15,6 +15,9 @@ export interface ShopInfo {
   shopSlug: string
   shopDescription: string | null
   shopLogo: string | null
+  name?: string | null
+  verificationStatus?: number | null
+  rejectionReason?: string | null
 }
 
 export interface Address {

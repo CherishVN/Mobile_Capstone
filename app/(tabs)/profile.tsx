@@ -126,6 +126,9 @@ export default function ProfileScreen() {
     )
   }
 
+  const role = (profile?.role || '').toLowerCase()
+  const canAccessSellerRegistration = role !== 'seller' && role !== 'admin'
+
   const menuItems = [
     {
       icon: 'person-outline' as const,
@@ -142,6 +145,15 @@ export default function ProfileScreen() {
       title: 'Địa chỉ giao hàng',
       onPress: () => router.push('/profile/addresses'),
     },
+    ...(canAccessSellerRegistration
+      ? [
+          {
+            icon: 'storefront-outline' as const,
+            title: 'Đăng ký trở thành Seller',
+            onPress: () => router.push('/profile/register-seller' as Href),
+          },
+        ]
+      : []),
     {
       icon: 'heart-outline' as const,
       title: 'Sản phẩm yêu thích',
