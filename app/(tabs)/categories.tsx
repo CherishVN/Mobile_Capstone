@@ -15,6 +15,65 @@ import { Category } from '@/types/category'
 import Loading from '@/components/Loading'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
 
+type IoniconName = React.ComponentProps<typeof Ionicons>['name']
+
+/** Trả về icon phù hợp với tên danh mục (khớp keyword, không phân biệt hoa thường) */
+function getCategoryIcon(name: string): IoniconName {
+  const n = name.toLowerCase()
+
+  if (/điện thoại|smartphone|mobile/.test(n)) return 'phone-portrait-outline'
+  if (/laptop|máy tính|macbook|notebook/.test(n)) return 'laptop-outline'
+  if (/máy ảnh|camera/.test(n)) return 'camera-outline'
+  if (/tivi|tv|màn hình|màn ảnh/.test(n)) return 'tv-outline'
+  if (/tai nghe|loa|âm thanh|headphone/.test(n)) return 'headset-outline'
+  if (/máy tính bảng|tablet|ipad/.test(n)) return 'tablet-portrait-outline'
+  if (/đồng hồ|watch/.test(n)) return 'watch-outline'
+  if (/điện tử|điện gia dụng|thiết bị/.test(n)) return 'hardware-chip-outline'
+  if (/phụ kiện/.test(n)) return 'extension-puzzle-outline'
+
+  if (/quần áo|thời trang|may mặc|áo|quần|váy|đầm/.test(n)) return 'shirt-outline'
+  if (/giày|dép|sandal|sneaker/.test(n)) return 'footsteps-outline'
+  if (/túi|balo|ví|handbag|backpack/.test(n)) return 'bag-handle-outline'
+  if (/nón|mũ|hat/.test(n)) return 'accessibility-outline'
+  if (/trang sức|nhẫn|vòng|dây chuyền|đá quý/.test(n)) return 'diamond-outline'
+
+  if (/mỹ phẩm|làm đẹp|skincare|son|kem|nước hoa|beauty/.test(n)) return 'color-palette-outline'
+  if (/chăm sóc tóc|tóc|hair/.test(n)) return 'cut-outline'
+
+  if (/bách hóa|tạp hóa|siêu thị|grocery/.test(n)) return 'basket-outline'
+  if (/thực phẩm|đồ ăn|ăn uống|thức ăn|food|nông sản|rau|củ|quả|hạt/.test(n)) return 'nutrition-outline'
+  if (/bánh|kẹo|snack|đồ ngọt/.test(n)) return 'cafe-outline'
+  if (/đồ uống|nước|bia|rượu|drink/.test(n)) return 'beer-outline'
+
+  if (/thú cưng|chó|mèo|pet|thú nuôi/.test(n)) return 'paw-outline'
+  if (/đồ chơi|toy|game controller/.test(n)) return 'game-controller-outline'
+  if (/trẻ em|em bé|baby|mẹ & bé|sơ sinh/.test(n)) return 'happy-outline'
+
+  if (/sách|văn học|kiến thức|book/.test(n)) return 'book-outline'
+  if (/văn phòng phẩm|bút|giấy|stationery/.test(n)) return 'pencil-outline'
+
+  if (/thể thao|gym|fitness|yoga|bóng|sport/.test(n)) return 'barbell-outline'
+  if (/ngoài trời|outdoor|cắm trại|leo núi/.test(n)) return 'trail-sign-outline'
+  if (/du lịch|travel|vali/.test(n)) return 'airplane-outline'
+
+  if (/ô tô|xe hơi|car|mô tô|xe máy|phụ tùng/.test(n)) return 'car-outline'
+
+  if (/nội thất|sofa|giường|bàn ghế|tủ|furniture/.test(n)) return 'bed-outline'
+  if (/nhà bếp|bếp|nồi|chảo|dụng cụ nhà bếp/.test(n)) return 'restaurant-outline'
+  if (/đèn|chiếu sáng|light/.test(n)) return 'bulb-outline'
+  if (/vệ sinh|tẩy rửa|cleaning/.test(n)) return 'sparkles-outline'
+  if (/cây|hoa|vườn|garden/.test(n)) return 'leaf-outline'
+  if (/gia dụng|home|nhà cửa|nội thất/.test(n)) return 'home-outline'
+
+  if (/sức khỏe|y tế|thuốc|vitamin|health/.test(n)) return 'medkit-outline'
+  if (/thể dục|dưỡng sinh|wellness/.test(n)) return 'heart-outline'
+
+  if (/nhạc cụ|âm nhạc|guitar|piano|music/.test(n)) return 'musical-notes-outline'
+  if (/nghệ thuật|mỹ thuật|vẽ|art/.test(n)) return 'brush-outline'
+
+  return 'pricetag-outline'
+}
+
 export default function CategoriesScreen() {
   const router = useRouter()
   const [categories, setCategories] = useState<Category[]>([])
@@ -61,7 +120,7 @@ export default function CategoriesScreen() {
         >
           <View style={styles.categoryLeft}>
             <View style={styles.iconContainer}>
-              <Ionicons name="pricetag" size={24} color={COLORS.primary} />
+              <Ionicons name={getCategoryIcon(item.name)} size={24} color={COLORS.primary} />
             </View>
             <Text style={styles.parentName}>{item.name}</Text>
           </View>

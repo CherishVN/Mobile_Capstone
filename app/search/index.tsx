@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   View,
   Text,
@@ -21,21 +21,43 @@ const { width } = Dimensions.get('window')
 
 export default function SearchScreen() {
   const router = useRouter()
+  const searchInputRef = useRef<TextInput>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [products, setProducts] = useState<Product[]>([])
+  const [featuredProducts, setFeaturedProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(false)
-  const [searched, setSearched] = useState(false)
+  const [featuredLoading, setFeaturedLoading] = useState(true)
+
+  const isSearching = searchQuery.trim().length > 0
+
+  /** Load sản phẩm nổi bật (best_seller) khi màn hình mở lần đầu */
+  const loadFeatured = useCallback(async () => {
+    setFeaturedLoading(true)
+    try {
+      const response = await productService.getProducts({
+        sortBy: 'best_seller',
+        pageSize: 20,
+      })
+      setFeaturedProducts(response.products || [])
+    } catch {
+      // ignore
+    } finally {
+      setFeaturedLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    const debounceTimer = setTimeout(async () => {
-      if (!searchQuery.trim()) {
-        setProducts([])
-        setSearched(false)
-        return
-      }
+    void loadFeatured()
+  }, [loadFeatured])
 
+  useEffect(() => {
+    if (!isSearching) {
+      setProducts([])
+      return
+    }
+
+    const debounceTimer = setTimeout(async () => {
       setLoading(true)
-      setSearched(true)
       try {
         const response = await productService.getProducts({
           search: searchQuery.trim(),
@@ -50,15 +72,15 @@ export default function SearchScreen() {
     }, 500)
 
     return () => clearTimeout(debounceTimer)
-  }, [searchQuery])
+  }, [searchQuery, isSearching])
 
-  const handleManualSubmit = () => {
-  }
+  const displayProducts = isSearching ? products : featuredProducts
+  const isLoading = isSearching ? loading : featuredLoading
 
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
-      
+
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color={COLORS.text} />
@@ -66,35 +88,35 @@ export default function SearchScreen() {
         <View style={styles.searchInputContainer}>
           <Ionicons name="search-outline" size={20} color={COLORS.textSecondary} />
           <TextInput
+            ref={searchInputRef}
             style={styles.searchInput}
             placeholder="Tìm kiếm sản phẩm..."
             placeholderTextColor={COLORS.placeholder}
-            value={searchQuery}
             onChangeText={setSearchQuery}
-            onSubmitEditing={handleManualSubmit}
             returnKeyType="search"
+            autoCorrect={false}
+            spellCheck={false}
+            autoComplete="off"
             autoFocus
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <TouchableOpacity onPress={() => {
+              searchInputRef.current?.clear()
+              setSearchQuery('')
+            }}>
               <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
             </TouchableOpacity>
           )}
         </View>
       </View>
 
-      {!searched ? (
-        <View style={styles.emptyState}>
-          <Ionicons name="search" size={64} color={COLORS.textSecondary} />
-          <Text style={styles.emptyText}>Tìm kiếm sản phẩm yêu thích của bạn</Text>
-        </View>
-      ) : loading ? (
+      {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
       ) : (
         <FlatList
-          data={products}
+          data={displayProducts}
           renderItem={({ item }) => (
             <View style={styles.productItem}>
               <ProductCard
@@ -107,11 +129,28 @@ export default function SearchScreen() {
           numColumns={2}
           contentContainerStyle={styles.listContent}
           columnWrapperStyle={styles.columnWrapper}
+          ListHeaderComponent={
+            !isSearching && displayProducts.length > 0 ? (
+              <View style={styles.sectionHeader}>
+                <Ionicons name="flame-outline" size={18} color={COLORS.primary} />
+                <Text style={styles.sectionTitle}>Sản phẩm bán chạy</Text>
+              </View>
+            ) : null
+          }
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <Ionicons name="file-tray-outline" size={64} color={COLORS.textSecondary} />
-              <Text style={styles.emptyText}>Không tìm thấy sản phẩm nào</Text>
-              <Text style={styles.emptySubtext}>Thử tìm kiếm với từ khóa khác</Text>
+              {isSearching ? (
+                <>
+                  <Ionicons name="file-tray-outline" size={64} color={COLORS.textSecondary} />
+                  <Text style={styles.emptyText}>Không tìm thấy sản phẩm nào</Text>
+                  <Text style={styles.emptySubtext}>Thử tìm kiếm với từ khóa khác</Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="search" size={64} color={COLORS.textSecondary} />
+                  <Text style={styles.emptyText}>Chưa có sản phẩm nào</Text>
+                </>
+              )}
             </View>
           }
         />
@@ -154,6 +193,17 @@ const styles = StyleSheet.create({
     fontSize: FONTS.size.md,
     color: COLORS.text,
     paddingVertical: SIZES.xs,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SIZES.xs,
+    marginBottom: SIZES.md,
+  },
+  sectionTitle: {
+    fontSize: FONTS.size.md,
+    fontWeight: '600',
+    color: COLORS.text,
   },
   listContent: {
     padding: SIZES.lg,

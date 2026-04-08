@@ -73,4 +73,6 @@ export interface Order {
   shippingAddress: string
   createdAt: string
   updatedAt?: string
+  cancelReason?: string | null
+  paymentProvider?: string | null
 }

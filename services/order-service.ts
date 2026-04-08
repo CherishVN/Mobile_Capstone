@@ -72,8 +72,12 @@ export const orderService = {
     }),
 
   /** Chỉ đơn chờ thanh toán (0) — khớp backend cancel-pending */
-  cancelPendingOrder: (orderId: string) =>
-    api.post<{ success: boolean; message?: string }>(`/api/orders/${orderId}/cancel-pending`),
+  cancelPendingOrder: (orderId: string, reason?: string) =>
+    api.post<{ success: boolean; message?: string }>(`/api/orders/${orderId}/cancel-pending`, reason ? { reason } : {}),
+
+  /** Hủy đơn đã thanh toán (status 1,2,3) — BE tự hoàn tiền vào ví */
+  cancelOrder: (orderId: string, reason?: string) =>
+    api.post<{ success: boolean; message?: string }>(`/api/orders/${orderId}/cancel`, reason ? { reason } : {}),
 
   /** Xác nhận đã nhận hàng — đơn đang giao (Shipping) */
   confirmReceived: (orderId: string) =>

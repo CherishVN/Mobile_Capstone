@@ -10,6 +10,8 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
+  Modal,
+  TextInput,
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
@@ -24,6 +26,12 @@ import { UserProfile } from '@/types/user'
 import Loading from '@/components/Loading'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
 
+function maskEmail(email: string): string {
+  const [local, domain] = email.split('@')
+  if (!domain) return email
+  return `${local.slice(0, 2)}${'*'.repeat(Math.max(local.length - 2, 3))}@${domain}`
+}
+
 export default function EditProfileScreen() {
   const router = useRouter()
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -34,9 +42,23 @@ export default function EditProfileScreen() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
 
+  // Email change state
+  const [emailModalVisible, setEmailModalVisible] = useState(false)
+  const [emailStep, setEmailStep] = useState<'input' | 'otp'>('input')
+  const [newEmail, setNewEmail] = useState('')
+  const [otp, setOtp] = useState('')
+  const [sendingOtp, setSendingOtp] = useState(false)
+  const [verifyingOtp, setVerifyingOtp] = useState(false)
+  const [isOAuth, setIsOAuth] = useState(false)
+
   useEffect(() => {
     loadProfile()
     loadAvatar()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user?.app_metadata?.provider && user.app_metadata.provider !== 'email') {
+        setIsOAuth(true)
+      }
+    })
   }, [])
 
   const loadProfile = async () => {
@@ -155,6 +177,49 @@ export default function EditProfileScreen() {
     }
   }
 
+  const openEmailModal = () => {
+    setNewEmail('')
+    setOtp('')
+    setEmailStep('input')
+    setEmailModalVisible(true)
+  }
+
+  const handleSendOtp = async () => {
+    if (!newEmail.trim()) return
+    setSendingOtp(true)
+    try {
+      const res = await userService.requestEmailChange(newEmail.trim())
+      if (res.success) {
+        setEmailStep('otp')
+      } else {
+        Alert.alert('Lỗi', res.message ?? 'Không thể gửi mã OTP')
+      }
+    } catch (e: any) {
+      Alert.alert('Lỗi', e?.message || 'Không thể gửi mã OTP')
+    } finally {
+      setSendingOtp(false)
+    }
+  }
+
+  const handleVerifyOtp = async () => {
+    if (otp.length !== 6) return
+    setVerifyingOtp(true)
+    try {
+      const res = await userService.confirmEmailChange(newEmail.trim(), otp)
+      if (res.success) {
+        setEmailModalVisible(false)
+        Alert.alert('Thành công', 'Email đã được cập nhật. Vui lòng đăng nhập lại.')
+        await loadProfile()
+      } else {
+        Alert.alert('Lỗi', res.message ?? 'Mã OTP không đúng')
+      }
+    } catch (e: any) {
+      Alert.alert('Lỗi', e?.message || 'Mã OTP không hợp lệ')
+    } finally {
+      setVerifyingOtp(false)
+    }
+  }
+
   if (loading) {
     return <Loading />
   }
@@ -211,12 +276,21 @@ export default function EditProfileScreen() {
         </View>
 
         <View style={styles.form}>
-          <Input
-            label="Email"
-            value={profile?.email || ''}
-            editable={false}
-            leftIcon="mail-outline"
-          />
+          {/* Email row with change button */}
+          <View style={styles.emailRow}>
+            <Text style={styles.emailLabel}>Email</Text>
+            <View style={styles.emailValueRow}>
+              <Ionicons name="mail-outline" size={18} color={COLORS.textSecondary} style={{ marginRight: 6 }} />
+              <Text style={styles.emailValue}>
+                {profile?.email ? maskEmail(profile.email) : '—'}
+              </Text>
+              {!isOAuth && (
+                <TouchableOpacity onPress={openEmailModal} style={styles.emailChangeBtn}>
+                  <Text style={styles.emailChangeBtnText}>Thay đổi</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
 
           <Input
             label="Họ và tên"
@@ -238,6 +312,98 @@ export default function EditProfileScreen() {
           <Button title="Lưu thay đổi" onPress={handleSave} loading={saving} fullWidth size="lg" />
         </View>
       </ScrollView>
+
+      {/* Email change modal */}
+      <Modal
+        visible={emailModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setEmailModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => {
+                if (emailStep === 'otp') { setEmailStep('input'); setOtp('') }
+                else setEmailModalVisible(false)
+              }}>
+                <Ionicons name={emailStep === 'otp' ? 'arrow-back' : 'close'} size={24} color={COLORS.text} />
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>Thay đổi Email</Text>
+              <View style={{ width: 24 }} />
+            </View>
+
+            <Text style={styles.modalDesc}>
+              {emailStep === 'input'
+                ? 'Nhập email mới. Mã OTP 6 số sẽ được gửi đến email này.'
+                : `Nhập mã OTP đã gửi đến ${newEmail}`}
+            </Text>
+
+            {emailStep === 'input' ? (
+              <View>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="email@example.com"
+                  placeholderTextColor={COLORS.placeholder}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  value={newEmail}
+                  onChangeText={setNewEmail}
+                  onSubmitEditing={handleSendOtp}
+                  returnKeyType="send"
+                />
+                <TouchableOpacity
+                  style={[styles.modalBtn, (!newEmail.trim() || sendingOtp) && styles.modalBtnDisabled]}
+                  disabled={!newEmail.trim() || sendingOtp}
+                  onPress={handleSendOtp}
+                >
+                  {sendingOtp
+                    ? <ActivityIndicator color={COLORS.onPrimary} />
+                    : <Text style={styles.modalBtnText}>Gửi mã OTP</Text>}
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View>
+                <View style={styles.otpRow}>
+                  {[0, 1, 2, 3, 4, 5].map((i) => (
+                    <View key={i} style={[styles.otpBox, otp.length > i && styles.otpBoxFilled]}>
+                      <Text style={styles.otpChar}>{otp[i] ?? ''}</Text>
+                    </View>
+                  ))}
+                </View>
+                <TextInput
+                  style={styles.otpHidden}
+                  value={otp}
+                  onChangeText={(v) => setOtp(v.replace(/\D/g, '').slice(0, 6))}
+                  keyboardType="numeric"
+                  maxLength={6}
+                  autoFocus
+                />
+                <TouchableOpacity
+                  style={[styles.modalBtn, (otp.length !== 6 || verifyingOtp) && styles.modalBtnDisabled]}
+                  disabled={otp.length !== 6 || verifyingOtp}
+                  onPress={handleVerifyOtp}
+                >
+                  {verifyingOtp
+                    ? <ActivityIndicator color={COLORS.onPrimary} />
+                    : <Text style={styles.modalBtnText}>Xác nhận</Text>}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => { setEmailStep('input'); setOtp('') }}
+                  style={{ marginTop: SIZES.sm, alignItems: 'center' }}
+                >
+                  <Text style={{ color: COLORS.primary, fontSize: FONTS.size.sm, textDecorationLine: 'underline' }}>
+                    Gửi lại mã
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </KeyboardAvoidingView>
   )
 }
@@ -336,5 +502,83 @@ const styles = StyleSheet.create({
   },
   form: {
     padding: SIZES.lg,
+  },
+  emailRow: {
+    marginBottom: SIZES.md,
+  },
+  emailLabel: {
+    fontSize: FONTS.size.sm,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: 6,
+  },
+  emailValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    paddingHorizontal: SIZES.md,
+    paddingVertical: 10,
+    backgroundColor: COLORS.background,
+  },
+  emailValue: {
+    flex: 1,
+    fontSize: FONTS.size.sm,
+    color: COLORS.textSecondary,
+  },
+  emailChangeBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  emailChangeBtnText: {
+    fontSize: FONTS.size.xs,
+    color: COLORS.primary,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
+  modalOverlay: {
+    flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalSheet: {
+    backgroundColor: COLORS.card,
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: SIZES.lg, paddingBottom: SIZES.xl,
+  },
+  modalHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: SIZES.sm,
+  },
+  modalTitle: {
+    fontSize: FONTS.size.md, fontWeight: '700', color: COLORS.text,
+  },
+  modalDesc: {
+    fontSize: FONTS.size.sm, color: COLORS.textSecondary,
+    marginBottom: SIZES.md, lineHeight: 20,
+  },
+  modalInput: {
+    borderWidth: 1, borderColor: COLORS.border, borderRadius: 10,
+    paddingHorizontal: SIZES.md, paddingVertical: 10,
+    fontSize: FONTS.size.sm, color: COLORS.text, marginBottom: SIZES.md,
+  },
+  modalBtn: {
+    backgroundColor: COLORS.primary, borderRadius: 12,
+    paddingVertical: 13, alignItems: 'center',
+  },
+  modalBtnDisabled: { opacity: 0.5 },
+  modalBtnText: { color: COLORS.onPrimary, fontWeight: '700', fontSize: FONTS.size.sm },
+  otpRow: {
+    flexDirection: 'row', justifyContent: 'center', gap: SIZES.sm, marginBottom: SIZES.md,
+  },
+  otpBox: {
+    width: 44, height: 52, borderRadius: 10,
+    borderWidth: 1.5, borderColor: COLORS.border,
+    justifyContent: 'center', alignItems: 'center',
+    backgroundColor: COLORS.background,
+  },
+  otpBoxFilled: { borderColor: COLORS.primary, backgroundColor: COLORS.chatRowHighlight },
+  otpChar: { fontSize: FONTS.size.xl, fontWeight: '700', color: COLORS.text },
+  otpHidden: {
+    position: 'absolute', opacity: 0, width: 1, height: 1,
   },
 })

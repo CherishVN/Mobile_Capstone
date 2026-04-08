@@ -6,6 +6,7 @@ import {
   StyleSheet,
   TextInputProps,
   TouchableOpacity,
+  Platform,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
@@ -48,6 +49,9 @@ export default function Input({
           style={[styles.input, style]}
           placeholderTextColor={COLORS.placeholder}
           secureTextEntry={isPassword && !isPasswordVisible}
+          autoCorrect={false}
+          spellCheck={false}
+          {...(Platform.OS === 'android' ? { disableFullscreenUI: true } : {})}
           {...props}
         />
         {isPassword ? (

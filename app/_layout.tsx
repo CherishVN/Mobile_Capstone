@@ -46,6 +46,7 @@ export default function RootLayout() {
         <Stack.Screen name="profile/addresses" />
         <Stack.Screen name="profile/change-password" />
         <Stack.Screen name="profile/favorites" />
+        <Stack.Screen name="profile/wallet" />
         <Stack.Screen name="profile/notifications" />
         <Stack.Screen name="assistant/index" />
         <Stack.Screen name="payment/success" />

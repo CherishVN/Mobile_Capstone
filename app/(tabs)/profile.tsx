@@ -133,6 +133,11 @@ export default function ProfileScreen() {
       onPress: () => router.push('/profile/edit'),
     },
     {
+      icon: 'wallet-outline' as const,
+      title: 'Ví của tôi',
+      onPress: () => router.push('/profile/wallet' as Href),
+    },
+    {
       icon: 'location-outline' as const,
       title: 'Địa chỉ giao hàng',
       onPress: () => router.push('/profile/addresses'),

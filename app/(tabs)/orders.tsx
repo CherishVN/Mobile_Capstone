@@ -438,6 +438,8 @@ export default function OrdersScreen() {
           placeholderTextColor={COLORS.placeholder}
           value={searchText}
           onChangeText={setSearchText}
+          autoCorrect={false}
+          spellCheck={false}
         />
         {searchText.length > 0 && (
           <TouchableOpacity onPress={() => setSearchText('')}>

@@ -13,6 +13,8 @@ export interface ApiCustomerOrderSummary {
   statusName?: string
   createdAt: string
   items?: ApiCustomerOrderItem[]
+  cancelReason?: string | null
+  paymentProvider?: string | null
 }
 
 export interface ApiCustomerOrderItem {
@@ -79,6 +81,8 @@ export function mapApiOrderSummaryToOrder(o: ApiCustomerOrderSummary): Order {
     items,
     shippingAddress: '',
     createdAt: o.createdAt,
+    cancelReason: o.cancelReason,
+    paymentProvider: o.paymentProvider,
   }
 }
 

@@ -86,6 +86,7 @@ export default function AssistantScreen() {
 
   const { addToCart, loadCart } = useCart()
   const listRef = useRef<FlatList>(null)
+  const inputRef = useRef<TextInput>(null)
 
   const [view, setView] = useState<'list' | 'chat'>('list')
   const [sessions, setSessions] = useState<AiSessionSummary[]>([])
@@ -321,6 +322,7 @@ export default function AssistantScreen() {
   const send = async () => {
     const text = input.trim()
     if (!text || !sessionId || sending) return
+    inputRef.current?.clear()
     setInput('')
     const userMsg: AssistantUiMessage = {
       id: `u-${Date.now()}`,
@@ -836,7 +838,11 @@ export default function AssistantScreen() {
               <TouchableOpacity
                 key={label}
                 style={styles.suggestionChip}
-                onPress={() => setInput(label)}
+                onPress={() => {
+                  inputRef.current?.setNativeProps({ text: label })
+                  setInput(label)
+                  inputRef.current?.focus()
+                }}
                 activeOpacity={0.85}
               >
                 <Text style={styles.suggestionChipText}>{label}</Text>
@@ -861,14 +867,17 @@ export default function AssistantScreen() {
 
       <View style={styles.inputRow}>
         <TextInput
+          ref={inputRef}
           style={styles.input}
           placeholder="Nhập tin nhắn…"
           placeholderTextColor={COLORS.textSecondary}
-          value={input}
           onChangeText={setInput}
           multiline
           maxLength={2000}
           editable={!sending}
+          autoCorrect={false}
+          spellCheck={false}
+          autoComplete="off"
         />
         <TouchableOpacity
           style={[styles.sendBtn, (!input.trim() || sending) && styles.sendBtnDisabled]}

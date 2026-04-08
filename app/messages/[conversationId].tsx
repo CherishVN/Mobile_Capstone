@@ -37,6 +37,7 @@ export default function ConversationChatScreen() {
   const { messagesByConversation, conversationsById, loadMessages, addMessage, setConversationDetail } =
     useChatStore()
   const listRef = useRef<FlatList>(null)
+  const msgInputRef = useRef<TextInput>(null)
   const userIdRef = useRef(user?.id)
   userIdRef.current = user?.id
 
@@ -106,6 +107,7 @@ export default function ConversationChatScreen() {
   const handleSendText = async () => {
     const text = input.trim()
     if (!text || sending || uploadingImage || !conversationId) return
+    msgInputRef.current?.clear()
     setInput('')
     
     // Optimistic UI
@@ -282,14 +284,17 @@ export default function ConversationChatScreen() {
         </TouchableOpacity>
         
         <TextInput
+          ref={msgInputRef}
           style={styles.input}
           placeholder="Nhập tin nhắn…"
           placeholderTextColor={COLORS.textSecondary}
-          value={input}
           onChangeText={setInput}
           multiline
           maxLength={2000}
           editable={!sending && !uploadingImage}
+          autoCorrect={false}
+          spellCheck={false}
+          autoComplete="off"
         />
         <TouchableOpacity
           style={[styles.sendBtn, (!input.trim() || sending || uploadingImage) && styles.sendDisabled]}

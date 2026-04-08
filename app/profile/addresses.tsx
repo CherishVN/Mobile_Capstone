@@ -405,6 +405,8 @@ export default function AddressesScreen() {
               placeholder="Nguyễn Văn A"
               value={form.fullName}
               onChangeText={(t) => setForm((p) => ({ ...p, fullName: t }))}
+              autoCorrect={false}
+              spellCheck={false}
             />
 
             <Text style={styles.inputLabel}>Số điện thoại <Text style={{ color: COLORS.error }}>*</Text></Text>
@@ -439,6 +441,8 @@ export default function AddressesScreen() {
               placeholder="Số nhà, Tên đường..."
               value={form.addressLine1}
               onChangeText={(t) => setForm((p) => ({ ...p, addressLine1: t }))}
+              autoCorrect={false}
+              spellCheck={false}
             />
 
             <Text style={styles.inputLabel}>Loại địa chỉ</Text>
@@ -447,6 +451,8 @@ export default function AddressesScreen() {
               placeholder="Văn phòng, Nhà riêng..."
               value={form.label}
               onChangeText={(t) => setForm((p) => ({ ...p, label: t }))}
+              autoCorrect={false}
+              spellCheck={false}
             />
 
             <TouchableOpacity style={styles.checkboxRow} onPress={() => setForm((p) => ({ ...p, isDefault: !p.isDefault }))}>

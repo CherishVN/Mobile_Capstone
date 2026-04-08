@@ -21,4 +21,10 @@ export const userService = {
 
   setDefaultAddress: (addressId: string) =>
     api.post<ApiResponse<null>>(`/api/user/addresses/${addressId}/set-default`),
+
+  requestEmailChange: (newEmail: string) =>
+    api.post<ApiResponse<null>>('/api/user/profile/request-email-change', { newEmail }),
+
+  confirmEmailChange: (newEmail: string, otp: string) =>
+    api.post<ApiResponse<null>>('/api/user/profile/confirm-email-change', { newEmail, otp }),
 }
