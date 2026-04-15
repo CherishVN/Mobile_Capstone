@@ -33,21 +33,33 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   initialize: async () => {
     set({ isLoading: true })
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
+    try {
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession()
 
-    if (session) {
-      set({ isAuthenticated: true, isLoading: false })
-    } else {
+      if (error) {
+        // Refresh token không hợp lệ hoặc hết hạn → xóa session cũ
+        await supabase.auth.signOut()
+        set({ user: null, isAuthenticated: false, isLoading: false })
+      } else if (session) {
+        set({ isAuthenticated: true, isLoading: false })
+      } else {
+        set({ user: null, isAuthenticated: false, isLoading: false })
+      }
+    } catch {
+      // AuthApiError: Invalid Refresh Token → xóa session bị hỏng
+      await supabase.auth.signOut()
       set({ user: null, isAuthenticated: false, isLoading: false })
     }
 
-    supabase.auth.onAuthStateChange((_event, session) => {
-      set({
-        isAuthenticated: !!session,
-        isLoading: false,
-      })
+    supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || !session) {
+        set({ user: null, isAuthenticated: false, isLoading: false })
+      } else {
+        set({ isAuthenticated: true, isLoading: false })
+      }
     })
   },
 }))
