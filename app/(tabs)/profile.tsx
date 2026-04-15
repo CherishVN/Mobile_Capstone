@@ -160,6 +160,11 @@ export default function ProfileScreen() {
       onPress: () => router.push('/profile/favorites' as Href),
     },
     {
+      icon: 'alert-circle-outline' as const,
+      title: 'Khiếu nại của tôi',
+      onPress: () => router.push('/profile/disputes' as Href),
+    },
+    {
       icon: 'lock-closed-outline' as const,
       title: 'Đổi mật khẩu',
       onPress: () => router.push('/profile/change-password'),

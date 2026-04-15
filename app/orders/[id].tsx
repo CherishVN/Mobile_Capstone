@@ -226,6 +226,9 @@ export default function OrderDetailScreen() {
   const canPay = order.status === OrderStatus.PendingPayment
   const canConfirmReceive = order.status === OrderStatus.Shipping
   const canReorder = REORDERABLE_STATUSES.has(order.status)
+  // Chỉ cho khiếu nại khi đơn đã giao hoặc hoàn thành
+  const canDispute =
+    order.status === OrderStatus.Delivered || order.status === OrderStatus.Completed
   const canReview =
     order.status === OrderStatus.Completed &&
     order.items.some((i) => i.hasReviewedByUser !== true)
@@ -438,6 +441,14 @@ export default function OrderDetailScreen() {
           variant="outline"
           fullWidth
           size="lg"
+        />
+      )}
+      {canDispute && (
+        <Button
+          title="🚨 Khiếu nại đơn hàng"
+          onPress={() => router.push(`/profile/disputes?orderId=${order.id}` as any)}
+          variant="outline"
+          fullWidth
         />
       )}
     </View>
