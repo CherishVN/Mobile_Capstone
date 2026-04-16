@@ -35,7 +35,8 @@
     },
     "plugins": [
       "expo-router",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-font"
     ],
     "scheme": "ecommerce",
     "experiments": {
@@ -43,8 +44,10 @@
     },
     "extra": {
       "eas": {
-        "projectId": "your-project-id"
-      }
-    }
+        "projectId": "389864cd-76d0-4278-95b4-614b1030cbf3"
+      },
+      "router": {}
+    },
+    "owner": "vothanhnam15062004"
   }
 }
