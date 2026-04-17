@@ -56,7 +56,10 @@ export default function GoogleAuthScreen() {
     supabase.auth
       .signInWithOAuth({
         provider: 'google',
-        options: { skipBrowserRedirect: true },
+        options: {
+          skipBrowserRedirect: true,
+          redirectTo: 'http://localhost/auth/callback',
+        },
       })
       .then(({ data, error }) => {
         if (data?.url) {
