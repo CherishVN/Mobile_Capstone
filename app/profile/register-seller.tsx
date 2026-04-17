@@ -70,10 +70,10 @@ type DocFile = {
 }
 
 const STEP_LABELS: Record<Step, string> = {
-  1: 'Thong tin shop',
-  2: 'Dia chi lay hang',
-  3: 'Ho so doanh nghiep',
-  4: 'Xac minh danh tinh',
+  1: 'Thông tin shop',
+  2: 'Địa chỉ lấy hàng',
+  3: 'Hồ sơ doanh nghiệp',
+  4: 'Xác minh danh tính',
 }
 
 const INITIAL_FORM: SellerFormState = {
@@ -96,23 +96,23 @@ const INITIAL_FORM: SellerFormState = {
 const DOC_SLOTS_BASE: DocSlot[] = [
   {
     docType: 'cccd_front',
-    label: 'CCCD / CMND mat truoc',
+    label: 'CCCD / CMND mặt trước',
     required: true,
-    hint: 'Anh ro rang, khong bi che khuat',
+    hint: 'Ảnh rõ ràng, không bị che khuất',
   },
   {
     docType: 'cccd_back',
-    label: 'CCCD / CMND mat sau',
+    label: 'CCCD / CMND mặt sau',
     required: true,
-    hint: 'Anh ro rang, khong bi che khuat',
+    hint: 'Ảnh rõ ràng, không bị che khuất',
   },
 ]
 
 const DOC_SLOT_BUSINESS: DocSlot = {
   docType: 'business_license',
-  label: 'Giay phep kinh doanh',
+  label: 'Giấy phép kinh doanh',
   required: true,
-  hint: 'Bat buoc voi ho kinh doanh va cong ty',
+  hint: 'Bắt buộc với hộ kinh doanh và công ty',
 }
 
 function getDocSlots(businessType: string): DocSlot[] {
@@ -189,7 +189,7 @@ export default function RegisterSellerScreen() {
         }))
       }
     } catch {
-      Alert.alert('Loi', 'Khong the tai thong tin ho so')
+      Alert.alert('Lỗi', 'Không thể tải thông tin hồ sơ')
     } finally {
       setLoadingProfile(false)
     }
@@ -201,7 +201,7 @@ export default function RegisterSellerScreen() {
       const data = await vietnamProvincesService.getProvinces()
       setProvinces(data)
     } catch {
-      Alert.alert('Loi', 'Khong the tai danh sach tinh/thanh pho')
+      Alert.alert('Lỗi', 'Không thể tải danh sách tỉnh/thành phố')
     } finally {
       setLoadingLocations(false)
     }
@@ -228,7 +228,7 @@ export default function RegisterSellerScreen() {
       const data = await vietnamProvincesService.getDistricts(provinceId)
       setDistricts(data)
     } catch {
-      Alert.alert('Loi', 'Khong the tai danh sach quan/huyen')
+      Alert.alert('Lỗi', 'Không thể tải danh sách quận/huyện')
     } finally {
       setLoadingLocations(false)
     }
@@ -251,7 +251,7 @@ export default function RegisterSellerScreen() {
       const data = await vietnamProvincesService.getWards(districtId)
       setWards(data)
     } catch {
-      Alert.alert('Loi', 'Khong the tai danh sach phuong/xa')
+      Alert.alert('Lỗi', 'Không thể tải danh sách phường/xã')
     } finally {
       setLoadingLocations(false)
     }
@@ -261,7 +261,7 @@ export default function RegisterSellerScreen() {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
       if (status !== 'granted') {
-        Alert.alert('Quyen truy cap', 'Can cap quyen thu vien anh de tai len giay to')
+        Alert.alert('Quyền truy cập', 'Cần cấp quyền thư viện ảnh để tải lên giấy tờ')
         return
       }
 
@@ -276,12 +276,12 @@ export default function RegisterSellerScreen() {
       const mimeType = asset.mimeType ?? 'image/jpeg'
 
       if (!['image/jpeg', 'image/png', 'image/webp'].includes(mimeType)) {
-        Alert.alert('Loi', 'Chi ho tro anh JPEG, PNG, WEBP')
+        Alert.alert('Lỗi', 'Chỉ hỗ trợ ảnh JPEG, PNG, WEBP')
         return
       }
 
       if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) {
-        Alert.alert('Loi', 'Anh khong duoc vuot qua 5 MB')
+        Alert.alert('Lỗi', 'Ảnh không được vượt quá 5 MB')
         return
       }
 
@@ -296,13 +296,13 @@ export default function RegisterSellerScreen() {
         },
       }))
     } catch {
-      Alert.alert('Loi', 'Khong the chon anh')
+      Alert.alert('Lỗi', 'Không thể chọn ảnh')
     }
   }
 
   const uploadDoc = async (docType: string, userId: string): Promise<string> => {
     const doc = docFiles[docType]
-    if (!doc) throw new Error(`Chua chon file cho ${docType}`)
+    if (!doc) throw new Error(`Chưa chọn file cho ${docType}`)
     if (doc.uploaded) return doc.fileUrl
 
     setUploadingDocs((prev) => ({ ...prev, [docType]: true }))
@@ -344,34 +344,34 @@ export default function RegisterSellerScreen() {
   const validateStep = (targetStep: Step): boolean => {
     if (targetStep === 1) {
       if (!form.shopName.trim()) {
-        Alert.alert('Thieu thong tin', 'Vui long nhap ten shop')
+        Alert.alert('Thiếu thông tin', 'Vui lòng nhập tên shop')
         return false
       }
       if (!form.businessType) {
-        Alert.alert('Thieu thong tin', 'Vui long chon loai hinh kinh doanh')
+        Alert.alert('Thiếu thông tin', 'Vui lòng chọn loại hình kinh doanh')
         return false
       }
     }
 
     if (targetStep === 2) {
       if (!form.phone.trim()) {
-        Alert.alert('Thieu thong tin', 'Vui long nhap so dien thoai shop')
+        Alert.alert('Thiếu thông tin', 'Vui lòng nhập số điện thoại shop')
         return false
       }
       if (!form.addressLine.trim()) {
-        Alert.alert('Thieu thong tin', 'Vui long nhap dia chi lay hang')
+        Alert.alert('Thiếu thông tin', 'Vui lòng nhập địa chỉ lấy hàng')
         return false
       }
       if (!form.provinceId) {
-        Alert.alert('Thieu thong tin', 'Vui long chon tinh/thanh pho')
+        Alert.alert('Thiếu thông tin', 'Vui lòng chọn tỉnh/thành phố')
         return false
       }
       if (!form.districtId) {
-        Alert.alert('Thieu thong tin', 'Vui long chon quan/huyen')
+        Alert.alert('Thiếu thông tin', 'Vui lòng chọn quận/huyện')
         return false
       }
       if (!form.wardCode) {
-        Alert.alert('Thieu thong tin', 'Vui long chon phuong/xa')
+        Alert.alert('Thiếu thông tin', 'Vui lòng chọn phường/xã')
         return false
       }
     }
@@ -380,7 +380,7 @@ export default function RegisterSellerScreen() {
       const requiredSlots = docSlots.filter((slot) => slot.required)
       for (const slot of requiredSlots) {
         if (!docFiles[slot.docType]) {
-          Alert.alert('Thieu tai lieu', `Vui long tai len: ${slot.label}`)
+          Alert.alert('Thiếu tài liệu', `Vui lòng tải lên: ${slot.label}`)
           return false
         }
       }
@@ -405,18 +405,18 @@ export default function RegisterSellerScreen() {
     const districtId = Number(form.districtId)
 
     if (!Number.isInteger(provinceId) || provinceId <= 0) {
-      Alert.alert('Loi', 'Province khong hop le')
+      Alert.alert('Lỗi', 'Province không hợp lệ')
       return
     }
 
     if (!Number.isInteger(districtId) || districtId <= 0) {
-      Alert.alert('Loi', 'District khong hop le')
+      Alert.alert('Lỗi', 'District không hợp lệ')
       return
     }
 
     const userId = profile?.id
     if (!userId) {
-      Alert.alert('Loi', 'Khong xac dinh duoc tai khoan')
+      Alert.alert('Lỗi', 'Không xác định được tài khoản')
       return
     }
 
@@ -450,17 +450,17 @@ export default function RegisterSellerScreen() {
 
       const res = await profileService.registerSeller(payload)
       if (!res.success) {
-        Alert.alert('That bai', res.message ?? 'Dang ky seller that bai')
+        Alert.alert('Thất bại', res.message ?? 'Đăng ký seller thất bại')
         return
       }
 
       Alert.alert(
-        'Thanh cong',
-        res.message ?? 'Dang ky seller thanh cong, vui long cho admin duyet',
+        'Thành công',
+        res.message ?? 'Đăng ký seller thành công, vui lòng chờ admin duyệt',
         [{ text: 'OK', onPress: () => router.replace('/(tabs)/profile') }]
       )
     } catch (error: unknown) {
-      Alert.alert('Loi', getErrorMessage(error, 'Co loi xay ra khi gui dang ky'))
+      Alert.alert('Lỗi', getErrorMessage(error, 'Có lỗi xảy ra khi gửi đăng ký'))
     } finally {
       setSubmitting(false)
     }
@@ -478,17 +478,17 @@ export default function RegisterSellerScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={COLORS.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Dang ky Seller</Text>
+          <Text style={styles.headerTitle}>Đăng ký Seller</Text>
           <View style={styles.placeholder} />
         </View>
 
         <View style={styles.notEligibleCard}>
-          <Text style={styles.notEligibleTitle}>Tai khoan da co quyen Seller hoac Admin</Text>
+          <Text style={styles.notEligibleTitle}>Tài khoản đã có quyền Seller hoặc Admin</Text>
           <Text style={styles.notEligibleText}>
-            Ban khong can tao yeu cau dang ky seller moi.
+            Bạn không cần tạo yêu cầu đăng ký seller mới.
           </Text>
           <Button
-            title="Quay lai ho so"
+            title="Quay lại hồ sơ"
             onPress={() => router.replace('/(tabs)/profile')}
             fullWidth
           />
@@ -505,23 +505,23 @@ export default function RegisterSellerScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={COLORS.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Dang ky Seller</Text>
+          <Text style={styles.headerTitle}>Đăng ký Seller</Text>
           <View style={styles.placeholder} />
         </View>
 
         <View style={styles.notEligibleCard}>
-          <Text style={styles.notEligibleTitle}>Dang cho xet duyet</Text>
+          <Text style={styles.notEligibleTitle}>Đang chờ xét duyệt</Text>
           <Text style={styles.notEligibleText}>
-            Don dang ky cua ban da duoc gui va dang cho admin phe duyet.
+            Đơn đăng ký của bạn đã được gửi và đang chờ admin phê duyệt.
           </Text>
           <View style={styles.pendingInfoBox}>
             <Text style={styles.pendingInfoText}>
-              Ten shop: {profile.shop.name || profile.shop.shopName || '-'}
+              Tên shop: {profile.shop.name || profile.shop.shopName || '-'}
             </Text>
-            <Text style={styles.pendingInfoText}>Ban se nhan thong bao khi co ket qua.</Text>
+            <Text style={styles.pendingInfoText}>Bạn sẽ nhận thông báo khi có kết quả.</Text>
           </View>
           <Button
-            title="Quay lai ho so"
+            title="Quay lại hồ sơ"
             onPress={() => router.replace('/(tabs)/profile')}
             variant="outline"
             fullWidth
@@ -539,33 +539,33 @@ export default function RegisterSellerScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={COLORS.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Dang ky Seller</Text>
+          <Text style={styles.headerTitle}>Đăng ký Seller</Text>
           <View style={styles.placeholder} />
         </View>
 
         <View style={styles.notEligibleCard}>
-          <Text style={styles.notEligibleTitle}>Don dang ky bi tu choi</Text>
+          <Text style={styles.notEligibleTitle}>Đơn đăng ký bị từ chối</Text>
           <Text style={styles.notEligibleText}>
-            Admin da tu choi don dang ky seller cua ban.
+            Admin đã từ chối đơn đăng ký seller của bạn.
           </Text>
           {!!profile.shop.rejectionReason && (
             <View style={styles.rejectedInfoBox}>
-              <Text style={styles.rejectedInfoTitle}>Ly do tu choi:</Text>
+              <Text style={styles.rejectedInfoTitle}>Lý do từ chối:</Text>
               <Text style={styles.rejectedInfoText}>{profile.shop.rejectionReason}</Text>
             </View>
           )}
           <View style={styles.pendingInfoBox}>
-            <Text style={styles.pendingInfoText}>Ban co the chinh sua thong tin va gui lai don dang ky.</Text>
+            <Text style={styles.pendingInfoText}>Bạn có thể chỉnh sửa thông tin và gửi lại đơn đăng ký.</Text>
           </View>
           <View style={styles.rejectedActionsRow}>
             <Button
-              title="Quay lai ho so"
+              title="Quay lại hồ sơ"
               onPress={() => router.replace('/(tabs)/profile')}
               variant="outline"
               style={styles.rejectedActionBtn}
             />
             <Button
-              title="Dang ky lai"
+              title="Đăng ký lại"
               onPress={() => {
                 setProfile((prev) => (prev ? { ...prev, shop: null } : prev))
                 setStep(1)
@@ -586,17 +586,17 @@ export default function RegisterSellerScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={COLORS.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Dang ky Seller</Text>
+          <Text style={styles.headerTitle}>Đăng ký Seller</Text>
           <View style={styles.placeholder} />
         </View>
 
         <View style={styles.notEligibleCard}>
-          <Text style={styles.notEligibleTitle}>Tai khoan hien tai khong can dang ky</Text>
+          <Text style={styles.notEligibleTitle}>Tài khoản hiện tại không cần đăng ký</Text>
           <Text style={styles.notEligibleText}>
-            Tai khoan hien tai khong can thuc hien dang ky seller moi.
+            Tài khoản hiện tại không cần thực hiện đăng ký seller mới.
           </Text>
           <Button
-            title="Quay lai ho so"
+            title="Quay lại hồ sơ"
             onPress={() => router.replace('/(tabs)/profile')}
             fullWidth
           />
@@ -616,7 +616,7 @@ export default function RegisterSellerScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Dang ky tro thanh Seller</Text>
+        <Text style={styles.headerTitle}>Đăng ký trở thành Seller</Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -626,15 +626,15 @@ export default function RegisterSellerScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.subtitle}>
-          Hoan tat 4 buoc de gui yeu cau duyet. Sau khi admin duyet, he thong se tu tao
-          cua hang GHN.
+          Hoàn tất 4 bước để gửi yêu cầu duyệt. Sau khi admin duyệt, hệ thống sẽ tự tạo
+          cửa hàng GHN.
         </Text>
 
         <View style={styles.stepRow}>
           {([1, 2, 3, 4] as Step[]).map((n) => (
             <View key={n} style={[styles.stepBadge, step === n ? styles.stepBadgeActive : undefined]}>
               <Text style={[styles.stepBadgeText, step === n ? styles.stepBadgeTextActive : undefined]}>
-                Buoc {n}: {STEP_LABELS[n]}
+                Bước {n}: {STEP_LABELS[n]}
               </Text>
             </View>
           ))}
@@ -643,18 +643,18 @@ export default function RegisterSellerScreen() {
         {step === 1 && (
           <View style={styles.card}>
             <Input
-              label="Ten shop *"
+              label="Tên shop *"
               value={form.shopName}
-              placeholder="Vi du: Handmade Home"
+              placeholder="Ví dụ: Handmade Home"
               onChangeText={(value) => setForm((prev) => ({ ...prev, shopName: value }))}
             />
 
-            <Text style={styles.inputLabel}>Loai hinh kinh doanh *</Text>
+            <Text style={styles.inputLabel}>Loại hình kinh doanh *</Text>
             <View style={styles.businessTypeRow}>
               {[
-                { value: 'individual', label: 'Ca nhan' },
-                { value: 'household', label: 'Ho kinh doanh' },
-                { value: 'company', label: 'Cong ty' },
+                { value: 'individual', label: 'Cá nhân' },
+                { value: 'household', label: 'Hộ kinh doanh' },
+                { value: 'company', label: 'Công ty' },
               ].map((item) => {
                 const selected = form.businessType === item.value
                 return (
@@ -682,9 +682,9 @@ export default function RegisterSellerScreen() {
             </View>
 
             <Input
-              label="Mo ta shop"
+              label="Mô tả shop"
               value={form.shopDescription}
-              placeholder="Mo ta ngan ve san pham va the manh cua shop"
+              placeholder="Mô tả ngắn về sản phẩm và thế mạnh của shop"
               multiline
               numberOfLines={4}
               textAlignVertical="top"
@@ -702,7 +702,7 @@ export default function RegisterSellerScreen() {
         {step === 2 && (
           <View style={styles.card}>
             <Input
-              label="So dien thoai shop *"
+              label="Số điện thoại shop *"
               value={form.phone}
               placeholder="09xxxxxxxx"
               keyboardType="phone-pad"
@@ -710,45 +710,45 @@ export default function RegisterSellerScreen() {
             />
 
             <Input
-              label="Dia chi lay hang *"
+              label="Địa chỉ lấy hàng *"
               value={form.addressLine}
-              placeholder="So nha, ten duong"
+              placeholder="Số nhà, tên đường"
               onChangeText={(value) => setForm((prev) => ({ ...prev, addressLine: value }))}
             />
 
             <SelectField
-              label="Tinh/Thanh pho *"
+              label="Tỉnh/Thành phố *"
               value={selectedProvinceName}
-              placeholder={loadingLocations ? 'Dang tai...' : 'Chon Tinh/Thanh pho'}
+              placeholder={loadingLocations ? 'Đang tải...' : 'Chọn Tỉnh/Thành phố'}
               onPress={() => setProvinceSheetVisible(true)}
             />
 
             <SelectField
-              label="Quan/Huyen *"
+              label="Quận/Huyện *"
               value={selectedDistrictName}
-              placeholder={loadingLocations ? 'Dang tai...' : 'Chon Quan/Huyen'}
+              placeholder={loadingLocations ? 'Đang tải...' : 'Chọn Quận/Huyện'}
               onPress={() => setDistrictSheetVisible(true)}
               disabled={!form.provinceId || loadingLocations}
             />
 
             <SelectField
-              label="Phuong/Xa *"
+              label="Phường/Xã *"
               value={selectedWardName}
-              placeholder={loadingLocations ? 'Dang tai...' : 'Chon Phuong/Xa'}
+              placeholder={loadingLocations ? 'Đang tải...' : 'Chọn Phường/Xã'}
               onPress={() => setWardSheetVisible(true)}
               disabled={!form.districtId || loadingLocations}
             />
 
-            <Input label="Thanh pho" value={form.city} editable={false} style={styles.readonlyInput} />
+            <Input label="Thành phố" value={form.city} editable={false} style={styles.readonlyInput} />
           </View>
         )}
 
         {step === 3 && (
           <View style={styles.card}>
             <Input
-              label="So giay phep kinh doanh"
+              label="Số giấy phép kinh doanh"
               value={form.businessLicenseNumber}
-              placeholder="Tuy chon"
+              placeholder="Tùy chọn"
               onChangeText={(value) =>
                 setForm((prev) => ({
                   ...prev,
@@ -758,23 +758,23 @@ export default function RegisterSellerScreen() {
             />
 
             <Input
-              label="Ma so thue"
+              label="Mã số thuế"
               value={form.taxCode}
-              placeholder="Tuy chon"
+              placeholder="Tùy chọn"
               onChangeText={(value) => setForm((prev) => ({ ...prev, taxCode: value }))}
             />
 
             <Input
-              label="Ngan hang"
+              label="Ngân hàng"
               value={form.bankName}
-              placeholder="Tuy chon"
+              placeholder="Tùy chọn"
               onChangeText={(value) => setForm((prev) => ({ ...prev, bankName: value }))}
             />
 
             <Input
-              label="So tai khoan"
+              label="Số tài khoản"
               value={form.bankAccountNumber}
-              placeholder="Tuy chon"
+              placeholder="Tùy chọn"
               onChangeText={(value) =>
                 setForm((prev) => ({
                   ...prev,
@@ -784,9 +784,9 @@ export default function RegisterSellerScreen() {
             />
 
             <Input
-              label="Ten chu tai khoan"
+              label="Tên chủ tài khoản"
               value={form.bankAccountName}
-              placeholder="Tuy chon"
+              placeholder="Tùy chọn"
               onChangeText={(value) =>
                 setForm((prev) => ({
                   ...prev,
@@ -802,10 +802,9 @@ export default function RegisterSellerScreen() {
             <View style={styles.infoBanner}>
               <Ionicons name="information-circle-outline" size={18} color={COLORS.primary} />
               <View style={styles.infoTextWrap}>
-                <Text style={styles.infoTitle}>Ho so xac minh danh tinh</Text>
+                <Text style={styles.infoTitle}>Hồ sơ xác minh danh tính</Text>
                 <Text style={styles.infoText}>
-                  Anh duoc luu tru bao mat va chi dung de xet duyet. Yeu cau anh ro net, du anh
-                  sang, khong bi cat xen.
+                  Ảnh được lưu trữ bảo mật và chỉ dùng để xét duyệt. Yêu cầu ảnh rõ nét, đủ ánh sáng, không bị cắt xén.
                 </Text>
               </View>
             </View>
@@ -834,22 +833,22 @@ export default function RegisterSellerScreen() {
             </View>
 
             <View style={styles.summaryBox}>
-              <Text style={styles.summaryTitle}>Thong tin se gui:</Text>
+              <Text style={styles.summaryTitle}>Thông tin sẽ gửi:</Text>
               <Text style={styles.summaryText}>Shop: {form.shopName || '-'}</Text>
-              <Text style={styles.summaryText}>Loai hinh: {form.businessType}</Text>
+              <Text style={styles.summaryText}>Loại hình: {form.businessType}</Text>
               <Text style={styles.summaryText}>
-                Dia chi GHN: {form.addressLine || '-'}
+                Địa chỉ GHN: {form.addressLine || '-'}
                 {selectedWardName ? `, ${selectedWardName}` : ''}
                 {selectedDistrictName ? `, ${selectedDistrictName}` : ''}
                 {form.city ? `, ${form.city}` : ''}
               </Text>
               <Text style={styles.summaryText}>
-                Tai lieu:{' '}
+                Tài liệu:{' '}
                 {docSlots
                   .map((s) =>
                     docFiles[s.docType]
                       ? `OK ${s.label}`
-                      : `Thieu ${s.label}${s.required ? ' (bat buoc)' : ''}`
+                      : `Thiếu ${s.label}${s.required ? ' (bắt buộc)' : ''}`
                   )
                   .join(' | ')}
               </Text>
@@ -860,7 +859,7 @@ export default function RegisterSellerScreen() {
 
       <View style={styles.footer}>
         <Button
-          title={step === 1 ? 'Quay lai ho so' : 'Quay lai'}
+          title={step === 1 ? 'Quay lại hồ sơ' : 'Quay lại'}
           variant="outline"
           onPress={step === 1 ? () => router.replace('/(tabs)/profile') : prevStep}
           disabled={submitting}
@@ -868,10 +867,10 @@ export default function RegisterSellerScreen() {
         />
 
         {step < 4 ? (
-          <Button title="Tiep tuc" onPress={nextStep} style={styles.footerBtn} />
+          <Button title="Tiếp tục" onPress={nextStep} style={styles.footerBtn} />
         ) : (
           <Button
-            title={submitting ? 'Dang gui...' : 'Gui yeu cau duyet'}
+            title={submitting ? 'Đang gửi...' : 'Gửi yêu cầu duyệt'}
             onPress={handleSubmit}
             disabled={submitting}
             loading={submitting}
@@ -881,7 +880,7 @@ export default function RegisterSellerScreen() {
       </View>
 
       <SelectSheet
-        title="Chon Tinh/Thanh pho"
+        title="Chọn Tỉnh/Thành phố"
         visible={provinceSheetVisible}
         onClose={() => setProvinceSheetVisible(false)}
         options={provinces.map((p) => ({ value: String(p.code), label: p.name }))}
@@ -893,7 +892,7 @@ export default function RegisterSellerScreen() {
       />
 
       <SelectSheet
-        title="Chon Quan/Huyen"
+        title="Chọn Quận/Huyện"
         visible={districtSheetVisible}
         onClose={() => setDistrictSheetVisible(false)}
         options={districts.map((d) => ({ value: String(d.code), label: d.name }))}
@@ -905,7 +904,7 @@ export default function RegisterSellerScreen() {
       />
 
       <SelectSheet
-        title="Chon Phuong/Xa"
+        title="Chọn Phường/Xã"
         visible={wardSheetVisible}
         onClose={() => setWardSheetVisible(false)}
         options={wards.map((w) => ({ value: String(w.code), label: w.name }))}
@@ -964,7 +963,7 @@ function SelectSheet({ title, visible, onClose, options, selectedValue, onSelect
   return (
     <BottomSheet visible={visible} title={title} onClose={onClose} height={420}>
       {options.length === 0 ? (
-        <Text style={styles.emptySelectText}>Chua co du lieu</Text>
+        <Text style={styles.emptySelectText}>Chưa có dữ liệu</Text>
       ) : (
         <View style={styles.selectList}>
           {options.map((option) => {
@@ -1017,7 +1016,7 @@ function DocUploadCard({ slot, doc, isUploading, onPickFile, onRemove }: DocUplo
           {isUploading && (
             <View style={styles.uploadingOverlay}>
               <ActivityIndicator size="small" color={COLORS.onPrimary} />
-              <Text style={styles.uploadingText}>Dang tai len...</Text>
+              <Text style={styles.uploadingText}>Đang tải lên...</Text>
             </View>
           )}
           {doc.uploaded && (
@@ -1030,14 +1029,14 @@ function DocUploadCard({ slot, doc, isUploading, onPickFile, onRemove }: DocUplo
         <TouchableOpacity style={styles.emptyDoc} onPress={onPickFile} activeOpacity={0.7}>
           <Ionicons name="image-outline" size={30} color={COLORS.textSecondary} />
           <Text style={styles.emptyDocHint}>{slot.hint}</Text>
-          <Text style={styles.emptyDocMeta}>JPEG | PNG | WEBP | toi da 5 MB</Text>
+          <Text style={styles.emptyDocMeta}>JPEG | PNG | WEBP | tối đa 5 MB</Text>
         </TouchableOpacity>
       )}
 
       {doc && (
         <TouchableOpacity style={styles.replaceBtn} onPress={onPickFile} activeOpacity={0.7}>
           <Ionicons name="camera-outline" size={15} color={COLORS.primary} />
-          <Text style={styles.replaceText}>Doi anh</Text>
+          <Text style={styles.replaceText}>Đổi ảnh</Text>
         </TouchableOpacity>
       )}
     </View>
