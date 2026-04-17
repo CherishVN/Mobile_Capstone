@@ -36,7 +36,7 @@ if (!g.crypto.subtle) {
             )
       const hex = await ExpoCrypto.digestStringAsync(
         ExpoCrypto.CryptoDigestAlgorithm.SHA256,
-        String.fromCharCode(...uint8),
+        String.fromCharCode(...Array.from(uint8)),
         { encoding: ExpoCrypto.CryptoEncoding.HEX },
       )
       const bytes = new Uint8Array(hex.length / 2)
