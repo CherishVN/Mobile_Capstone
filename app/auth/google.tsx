@@ -14,10 +14,29 @@ import Loading from '@/components/Loading'
 import { COLORS, FONTS, SIZES } from '@/constants/theme'
 
 function isCallbackUrl(url: string): boolean {
-  return (
+  // Luôn bắt localhost/127.0.0.1
+  if (
     url.startsWith('http://localhost') ||
     url.startsWith('http://127.0.0.1')
-  )
+  ) {
+    return true
+  }
+
+  // Bắt bất kỳ URL nào chứa auth params (code hoặc access_token)
+  // mà không phải trang Google hay Supabase auth
+  try {
+    const isAuthProvider =
+      url.includes('accounts.google.com') ||
+      url.includes('supabase.co/auth')
+    if (isAuthProvider) return false
+
+    const parsed = new URL(url)
+    const hasCode = parsed.searchParams.has('code')
+    const hasHash = url.includes('#access_token=')
+    return hasCode || hasHash
+  } catch {
+    return false
+  }
 }
 
 function extractParamsFromUrl(url: string) {
