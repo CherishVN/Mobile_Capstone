@@ -53,6 +53,7 @@ export default function RootLayout() {
         <Stack.Screen name="payment/success" />
         <Stack.Screen name="payment/failed" />
         <Stack.Screen name="payment/vnpay-web" />
+        <Stack.Screen name="payment/momo-web" />
         <Stack.Screen name="messages" options={{ headerShown: false }} />
         <Stack.Screen name="shop/[slug]" />
       </Stack>

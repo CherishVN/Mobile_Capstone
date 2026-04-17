@@ -6,7 +6,6 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  Linking,
   Image,
   ActivityIndicator,
 } from 'react-native'
@@ -18,6 +17,7 @@ import { userService } from '@/services/user-service'
 import { orderService } from '@/services/order-service'
 import { paymentService } from '@/services/payment-service'
 import { startVnPayInAppSession } from '@/lib/vnpay-in-app'
+import { startMoMoInAppSession } from '@/lib/momo-in-app'
 import { productService } from '@/services/product-service'
 import { Cart, CartItem } from '@/types/cart'
 import { Address } from '@/types/user'
@@ -237,12 +237,12 @@ export default function CheckoutScreen() {
             skipGoToOrders = true
           }
         } else {
-          const payRes = await paymentService.createMoMo(firstOrderId)
-          if (payRes.success && payRes.paymentUrl) {
+          const momoRes = await startMoMoInAppSession(firstOrderId)
+          if (momoRes.kind === 'error') {
+            Alert.alert('Lỗi', momoRes.message || `Không thể tạo giao dịch ${label}`)
+          } else if (momoRes.kind === 'opened') {
             await markPendingPaymentOrder(firstOrderId)
-            await Linking.openURL(payRes.paymentUrl)
-          } else {
-            Alert.alert('Lỗi', payRes.message || `Không thể tạo giao dịch ${label}`)
+            skipGoToOrders = true
           }
         }
       } catch {
