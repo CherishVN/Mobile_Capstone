@@ -2,12 +2,21 @@ import { Tabs } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { COLORS, FONTS } from '@/constants/theme'
 import { useCartStore } from '@/store/cart-store'
-import { View, Text, StyleSheet } from 'react-native'
+import { View, Text, StyleSheet, Platform } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+
+/** Min bottom inset when OS reports 0 but device still has gesture/home bar. */
+function tabBarBottomInset(insetsBottom: number) {
+  const floor = Platform.OS === 'android' ? 14 : 10
+  return Math.max(insetsBottom, floor)
+}
 
 export default function TabsLayout() {
   const cartTotal = useCartStore((state) => state.getTotalItems())
   const insets = useSafeAreaInsets()
+  const bottomInset = tabBarBottomInset(insets.bottom)
+  const paddingTop = 8
+  const contentMin = 44
 
   return (
     <Tabs
@@ -19,9 +28,9 @@ export default function TabsLayout() {
           backgroundColor: COLORS.card,
           borderTopColor: COLORS.border,
           borderTopWidth: 1,
-          height: 45 + insets.bottom,
-          paddingBottom: 8 + insets.bottom,
-          paddingTop: 8,
+          paddingTop,
+          paddingBottom: bottomInset,
+          height: paddingTop + contentMin + bottomInset,
         },
         tabBarLabelStyle: {
           fontSize: FONTS.size.xs,

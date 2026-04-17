@@ -1,6 +1,8 @@
-import React, { useEffect } from 'react'
+import React, { useCallback, useEffect } from 'react'
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native'
-import { useRouter, useLocalSearchParams } from 'expo-router'
+import { useRouter, useLocalSearchParams, useNavigation } from 'expo-router'
+import { StackActions } from '@react-navigation/native'
+import type { Href } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
@@ -14,6 +16,7 @@ function pickParam(v: string | string[] | undefined): string | undefined {
 /** Dùng khi deep link / redirect về app (scheme ecommerce://). */
 export default function PaymentSuccessScreen() {
   const router = useRouter()
+  const navigation = useNavigation()
   const params = useLocalSearchParams<{ orderId?: string | string[]; amount?: string | string[] }>()
   const orderId = pickParam(params.orderId)
   const amountRaw = pickParam(params.amount)
@@ -27,6 +30,28 @@ export default function PaymentSuccessScreen() {
     if (orderId) void clearPendingPaymentOrder()
   }, [orderId])
 
+  // Stack: (tabs) -> orders/[id] -> payment/success. replace() only swapped top; Back still hit stale order (pay UI). Pop 2 then navigate.
+  const exitSuccessThen = useCallback(
+    (action: () => void) => {
+      navigation.dispatch(StackActions.pop(2))
+      queueMicrotask(action)
+    },
+    [navigation]
+  )
+
+  const goToOrderDetail = useCallback(() => {
+    if (!orderId) return
+    exitSuccessThen(() => {
+      router.push(`/orders/${orderId}` as Href)
+    })
+  }, [orderId, exitSuccessThen, router])
+
+  const goToHome = useCallback(() => {
+    exitSuccessThen(() => {
+      router.replace('/(tabs)/home' as Href)
+    })
+  }, [exitSuccessThen, router])
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
       <StatusBar style="dark" />
@@ -39,12 +64,13 @@ export default function PaymentSuccessScreen() {
           Đơn hàng đã được ghi nhận. Bạn có thể xem chi tiết và trạng thái giao hàng trong mục Đơn hàng.
         </Text>
         {amountLabel ? <Text style={styles.amount}>Số tiền: {amountLabel}</Text> : null}
-        {orderId ? <Text style={styles.hint}>Thông tin đơn đã được đồng bộ — mở chi tiết đơn để xem đầy đủ.</Text> : null}
         {orderId ? (
-          <TouchableOpacity
-            style={styles.btn}
-            onPress={() => router.replace(`/orders/${orderId}`)}
-          >
+          <Text style={styles.hint}>
+            Thông tin đơn đã được đồng bộ — mở chi tiết đơn để xem đầy đủ.
+          </Text>
+        ) : null}
+        {orderId ? (
+          <TouchableOpacity style={styles.btn} onPress={goToOrderDetail}>
             <Text style={styles.btnText}>Xem đơn hàng</Text>
           </TouchableOpacity>
         ) : (
@@ -52,8 +78,11 @@ export default function PaymentSuccessScreen() {
             <Text style={styles.btnText}>Về danh sách đơn hàng</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity style={styles.secondary} onPress={() => router.replace('/(tabs)/home')}>
-          <Text style={styles.secondaryText}>Tiếp tục mua sắm</Text>
+        <TouchableOpacity
+          style={styles.secondary}
+          onPress={orderId ? goToHome : () => router.replace('/(tabs)/home')}
+        >
+          <Text style={styles.secondaryText}>Tiếp tục mua s��m</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

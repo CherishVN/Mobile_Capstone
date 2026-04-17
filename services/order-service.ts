@@ -79,7 +79,7 @@ export const orderService = {
   cancelOrder: (orderId: string, reason?: string) =>
     api.post<{ success: boolean; message?: string }>(`/api/orders/${orderId}/cancel`, reason ? { reason } : {}),
 
-  /** Xác nhận đã nhận hàng — đơn đang giao (Shipping) */
+  /** Xác nhận đã nhận hàng — đơn đã giao (Delivered) → Completed */
   confirmReceived: (orderId: string) =>
     api.post<{ success: boolean; message?: string }>(`/api/orders/${orderId}/confirm`),
 }

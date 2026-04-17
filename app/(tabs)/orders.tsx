@@ -230,7 +230,7 @@ export default function OrdersScreen() {
   /* ── Render ── */
   const renderOrderItem = ({ item: order }: { item: Order }) => {
     const statusColor = getOrderStatusColor(order.status)
-    const canConfirm = order.status === OrderStatus.Shipping
+    const canConfirm = order.status === OrderStatus.Delivered
     const canPayNow = order.status === OrderStatus.PendingPayment
     const canReorder = REORDERABLE_STATUSES.has(order.status)
     const canReview =

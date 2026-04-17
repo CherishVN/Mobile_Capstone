@@ -224,7 +224,7 @@ export default function OrderDetailScreen() {
     order.status === OrderStatus.Processing
   const canCancel = canCancelPending || canCancelOrder
   const canPay = order.status === OrderStatus.PendingPayment
-  const canConfirmReceive = order.status === OrderStatus.Shipping
+  const canConfirmReceive = order.status === OrderStatus.Delivered
   const canReorder = REORDERABLE_STATUSES.has(order.status)
   // Chỉ cho khiếu nại khi đơn đã giao hoặc hoàn thành
   const canDispute =
