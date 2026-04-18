@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Alert,
   Image,
-  Linking,
   Modal,
   TextInput,
   KeyboardAvoidingView,
@@ -28,6 +27,7 @@ import { COLORS, SIZES, FONTS } from '@/constants/theme'
 import { useAuthStore } from '@/store/auth-store'
 import { markPendingPaymentOrder } from '@/lib/pending-payment'
 import { startVnPayInAppSession } from '@/lib/vnpay-in-app'
+import { startMoMoInAppSession } from '@/lib/momo-in-app'
 import ProductReviewOrderModal from '@/components/ProductReviewOrderModal'
 import ShopReviewOrderModal, {
   hasStoredShopReviewForOrder,
@@ -142,15 +142,13 @@ export default function OrderDetailScreen() {
         }
         await loadOrder()
       } else {
-        const res = await paymentService.createMoMo(orderId)
-        if (res.success && res.paymentUrl) {
-          await markPendingPaymentOrder(orderId)
-          const can = await Linking.canOpenURL(res.paymentUrl)
-          if (can) await Linking.openURL(res.paymentUrl)
-          else Alert.alert('Lỗi', 'Không mở được trình duyệt thanh toán')
+        const momoRes = await startMoMoInAppSession(orderId)
+        if (momoRes.kind === 'error') {
+          Alert.alert('Lỗi', momoRes.message || 'Không tạo được link thanh toán')
         } else {
-          Alert.alert('Lỗi', res.message || 'Không tạo được link thanh toán')
+          await markPendingPaymentOrder(orderId)
         }
+        await loadOrder()
       }
     } catch (error: any) {
       Alert.alert('Lỗi', error.message || 'Thanh toán thất bại')
@@ -475,35 +473,46 @@ export default function OrderDetailScreen() {
         onRequestClose={() => setCancelModalVisible(false)}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.modalOverlay}
         >
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={1}
+            onPress={() => setCancelModalVisible(false)}
+          />
           <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Hủy đơn hàng</Text>
-            {canCancelOrder && (
-              <View style={styles.refundNotice}>
-                <Ionicons name="wallet-outline" size={16} color="#16A34A" />
-                <Text style={styles.refundNoticeText}>
-                  Tiền sẽ được hoàn lại vào ví của bạn sau khi hủy.
-                </Text>
-              </View>
-            )}
-            <Text style={styles.modalLabel}>Lý do hủy (không bắt buộc)</Text>
-            <TextInput
-              style={styles.cancelReasonInput}
-              placeholder="Ví dụ: Tôi đổi địa chỉ nhận hàng..."
-              placeholderTextColor={COLORS.placeholder}
-              value={cancelReason}
-              onChangeText={setCancelReason}
-              multiline
-              numberOfLines={4}
-              maxLength={500}
-              textAlignVertical="top"
-              autoCorrect={false}
-              spellCheck={false}
-              disableFullscreenUI={Platform.OS === 'android'}
-            />
-            <Text style={styles.charCount}>{cancelReason.length}/500</Text>
+            <ScrollView
+              bounces={false}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={styles.modalTitle}>Hủy đơn hàng</Text>
+              {canCancelOrder && (
+                <View style={styles.refundNotice}>
+                  <Ionicons name="wallet-outline" size={16} color="#16A34A" />
+                  <Text style={styles.refundNoticeText}>
+                    Tiền sẽ được hoàn lại vào ví của bạn sau khi hủy.
+                  </Text>
+                </View>
+              )}
+              <Text style={styles.modalLabel}>Lý do hủy (không bắt buộc)</Text>
+              <TextInput
+                style={styles.cancelReasonInput}
+                placeholder="Ví dụ: Tôi đổi địa chỉ nhận hàng..."
+                placeholderTextColor={COLORS.placeholder}
+                value={cancelReason}
+                onChangeText={setCancelReason}
+                multiline
+                numberOfLines={3}
+                maxLength={500}
+                textAlignVertical="top"
+                autoCorrect={false}
+                spellCheck={false}
+                disableFullscreenUI={Platform.OS === 'android'}
+              />
+              <Text style={styles.charCount}>{cancelReason.length}/500</Text>
+            </ScrollView>
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.modalBtnOutline}
