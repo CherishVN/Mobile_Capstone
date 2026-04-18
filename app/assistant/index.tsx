@@ -39,6 +39,8 @@ import {
   type ProductSelection,
   type ConfirmTargetCache,
 } from '@/utils/ai-chat-ui-cache'
+import { mapHistoryToAssistantUi } from '@/utils/ai-chat-map-history'
+import { dedupeMergedAssistantMessages } from '@/utils/ai-chat-merge-messages'
 
 const SUGGESTION_CHIPS = [
   'Áo thun nam dưới 200k',
@@ -55,30 +57,6 @@ function msgId(m: { id: string | number }) {
 }
 
 type ConfirmTarget = ConfirmTargetCache
-
-/** Giống FE: tin từ BE (id số) + tin từ cache (id u-/a- có products). */
-function mergeCachedMessagesWithBe(
-  cachedMessages: AssistantUiMessage[],
-  beMessages: AssistantUiMessage[]
-): AssistantUiMessage[] {
-  if (!cachedMessages.length) return beMessages
-  const cachedIds = new Set(cachedMessages.map((m) => msgId(m)))
-  const extraFromBe = beMessages.filter((bm) => {
-    if (cachedIds.has(msgId(bm))) return false
-    const tbm = bm.createdAt ? new Date(bm.createdAt).getTime() : 0
-    const dupByContent = cachedMessages.some((cm) => {
-      if (cm.role !== bm.role || cm.content !== bm.content) return false
-      const tcm = cm.createdAt ? new Date(cm.createdAt).getTime() : 0
-      return tcm > 0 && tbm > 0 && Math.abs(tcm - tbm) < 15000
-    })
-    return !dupByContent
-  })
-  return [...cachedMessages, ...extraFromBe].sort((a, b) => {
-    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0
-    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0
-    return ta - tb
-  })
-}
 
 export default function AssistantScreen() {
   const router = useRouter()
@@ -527,12 +505,15 @@ export default function AssistantScreen() {
       const res = await aiChatService.createNewSession()
       setSessionId(res.sessionId)
       setMessages(
-        (res.history || []).map((m) => ({
-          id: String(m.id),
-          role: m.role as 'user' | 'assistant',
-          content: m.content,
-          createdAt: m.createdAt,
-        }))
+        (res.history || []).map((m) =>
+          mapHistoryToAssistantUi(res.sessionId, {
+            id: m.id,
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+            createdAt: m.createdAt,
+            products: m.products,
+          })
+        )
       )
       setSelectedProductsByMessageId({})
       setConfirmTarget(null)
@@ -551,17 +532,24 @@ export default function AssistantScreen() {
       await aiChatService.markSessionRead(sid).catch(() => null)
       const res = await aiChatService.getSessionMessages(sid)
       if (!res.success) throw new Error('Không tải được tin nhắn')
-      const beMessages: AssistantUiMessage[] = (res.messages || []).map((m) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-        createdAt: m.createdAt,
-      }))
+      const beMessages: AssistantUiMessage[] = (res.messages || []).map((m) =>
+        mapHistoryToAssistantUi(sid, {
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          createdAt: m.createdAt,
+          products: m.products,
+        })
+      )
       const cached = await readAiChatUiCache(sid)
-      const merged =
-        cached?.messages?.length && cached.messages.length > 0
-          ? mergeCachedMessagesWithBe(cached.messages, beMessages)
-          : beMessages
+      let merged: AssistantUiMessage[]
+      if (cached?.messages?.length) {
+        const cachedIds = new Set(cached.messages.map((cm) => msgId(cm)))
+        const extraFromBe = beMessages.filter((bm) => !cachedIds.has(msgId(bm)))
+        merged = dedupeMergedAssistantMessages([...cached.messages, ...extraFromBe])
+      } else {
+        merged = dedupeMergedAssistantMessages(beMessages)
+      }
 
       setSessionId(sid)
       setMessages(merged)

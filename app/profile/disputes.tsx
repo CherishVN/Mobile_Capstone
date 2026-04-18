@@ -20,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
 import { supabase } from '@/lib/supabase'
 import { disputeService } from '@/services/dispute-service'
+import { orderService } from '@/services/order-service'
 import {
   DisputeStatus,
   DisputeStatusLabels,
@@ -197,6 +198,7 @@ export default function DisputesScreen() {
   })
   const [evidenceUrls, setEvidenceUrls] = useState<string[]>([])
   const [typePickerVisible, setTypePickerVisible] = useState(false)
+  const [hintOrderTotal, setHintOrderTotal] = useState<number | null>(null)
 
   // Auto-open create form khi navigate từ trang đơn hàng
   useEffect(() => {
@@ -206,6 +208,30 @@ export default function DisputesScreen() {
       setCreateVisible(true)
     }
   }, [params.orderId])
+
+  useEffect(() => {
+    if (!createVisible) {
+      setHintOrderTotal(null)
+      return
+    }
+    const id = form.orderId.trim()
+    if (!id) {
+      setHintOrderTotal(null)
+      return
+    }
+    let alive = true
+    const t = setTimeout(() => {
+      void orderService.getOrderById(id).then(res => {
+        if (!alive) return
+        if (res.success && res.order) setHintOrderTotal(res.order.total)
+        else setHintOrderTotal(null)
+      })
+    }, 400)
+    return () => {
+      alive = false
+      clearTimeout(t)
+    }
+  }, [createVisible, form.orderId])
 
   // Cancel modal
   const [cancelTarget, setCancelTarget] = useState<CustomerDispute | null>(null)
@@ -260,6 +286,28 @@ export default function DisputesScreen() {
       Alert.alert('Lỗi', `Lý do phải có ít nhất 20 ký tự (hiện: ${form.reason.trim().length})`)
       return
     }
+
+    const ordRes = await orderService.getOrderById(form.orderId.trim())
+    if (!ordRes.success || !ordRes.order) {
+      Alert.alert('Lỗi', ordRes.message ?? 'Không tìm thấy đơn hàng')
+      return
+    }
+    const maxTotal = ordRes.order.total
+    const rawAmt = form.requestedAmount.trim()
+    const reqAmt = rawAmt === '' ? 0 : Number(rawAmt)
+    if (Number.isNaN(reqAmt) || reqAmt < 0) {
+      Alert.alert('Lỗi', 'Số tiền yêu cầu không hợp lệ')
+      return
+    }
+    if (reqAmt > maxTotal) {
+      Alert.alert('Lỗi', `Số tiền yêu cầu không được vượt quá tổng đơn (${formatPrice(maxTotal)})`)
+      return
+    }
+    if (form.type === DisputeType.Refund && reqAmt <= 0) {
+      Alert.alert('Lỗi', 'Với loại hoàn tiền, vui lòng nhập số tiền lớn hơn 0')
+      return
+    }
+
     setCreating(true)
     try {
       const res = await disputeService.createDispute({
@@ -267,7 +315,7 @@ export default function DisputesScreen() {
         type: form.type,
         title: form.title.trim(),
         reason: form.reason.trim(),
-        requestedAmount: form.requestedAmount ? Number(form.requestedAmount) : 0,
+        requestedAmount: reqAmt,
         evidenceUrls: evidenceUrls.length > 0 ? evidenceUrls : undefined,
       })
       if (res.success) {
@@ -528,6 +576,11 @@ export default function DisputesScreen() {
                   onChangeText={v => setForm(f => ({ ...f, requestedAmount: v }))}
                   keyboardType="numeric"
                 />
+                {hintOrderTotal != null && (
+                  <Text style={styles.charCount}>
+                    Tối đa {formatPrice(hintOrderTotal)} (tổng đơn). Loại Hoàn tiền: bắt buộc nhập &gt; 0.
+                  </Text>
+                )}
               </View>
 
               <View style={styles.modalActions}>
