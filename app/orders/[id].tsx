@@ -407,7 +407,7 @@ export default function OrderDetailScreen() {
       )}
       {canReorder && (
         <Button
-          title={reordering ? 'Đang thêm...' : '🔄 Mua lại'}
+          title={reordering ? 'Đang thêm...' : 'Mua lại'}
           onPress={handleReorder}
           loading={reordering}
           variant="outline"

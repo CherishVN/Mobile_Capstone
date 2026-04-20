@@ -440,7 +440,7 @@ export default function ProductDetailScreen() {
       </View>
 
       {/* === VARIANT MODAL === */}
-      <Modal visible={showVariantModal} transparent animationType="slide" onRequestClose={() => setShowVariantModal(false)}>
+      <Modal visible={showVariantModal} animationType="slide" statusBarTranslucent onRequestClose={() => setShowVariantModal(false)}>
          <View style={styles.modalBackdrop}>
            <TouchableOpacity style={{flex: 1}} onPress={() => setShowVariantModal(false)} />
            <View style={styles.modalContent}>
@@ -729,7 +729,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     maxHeight: '80%',
-    paddingBottom: SIZES.lg,
+    paddingBottom: 48,
   },
   modalCloseBtn: {
     position: 'absolute',
@@ -817,7 +817,6 @@ const styles = StyleSheet.create({
   modalFooter: {
     padding: SIZES.md,
     paddingTop: SIZES.md,
-    paddingBottom: 34,
   },
   modalConfirmBtn: {
     backgroundColor: SHOPEE_RED,
