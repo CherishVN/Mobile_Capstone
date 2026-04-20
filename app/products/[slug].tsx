@@ -817,6 +817,7 @@ const styles = StyleSheet.create({
   modalFooter: {
     padding: SIZES.md,
     paddingTop: SIZES.md,
+    paddingBottom: 34,
   },
   modalConfirmBtn: {
     backgroundColor: SHOPEE_RED,
