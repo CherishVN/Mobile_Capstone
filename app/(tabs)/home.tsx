@@ -76,7 +76,7 @@ export default function HomeScreen() {
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([])
   const [newProducts, setNewProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
-  
+
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [activeSlide, setActiveSlide] = useState(0)
@@ -95,7 +95,7 @@ export default function HomeScreen() {
 
       setFeaturedProducts(featuredRes?.products || [])
       setNewProducts(newRes?.products || [])
-      
+
       const categoryData = categoriesRes?.categories || []
       if (Array.isArray(categoryData)) {
         setCategories(
@@ -133,17 +133,17 @@ export default function HomeScreen() {
       <ImageBackground source={{ uri: item.image }} style={styles.heroSlideBg} imageStyle={{ borderRadius: 12 }}>
         <View style={[styles.heroOverlay, { backgroundColor: item.overlay }]} />
         <View style={styles.heroSlideContent}>
-           <View style={[styles.heroBadge, { backgroundColor: item.badgeColor }]}>
-             <Text style={styles.heroBadgeText}>{item.badge}</Text>
-           </View>
-           <Text style={styles.heroTitle}>{item.title}</Text>
-           <Text style={styles.heroHighlight}>{item.titleHighlight}</Text>
-           <Text style={styles.heroDesc}>{item.desc}</Text>
-           
-           <TouchableOpacity style={[styles.heroBtn, { backgroundColor: item.btnColor }]}>
-             <Text style={styles.heroBtnText}>{item.cta}</Text>
-             <Ionicons name="arrow-forward" size={16} color="#fff" />
-           </TouchableOpacity>
+          <View style={[styles.heroBadge, { backgroundColor: item.badgeColor }]}>
+            <Text style={styles.heroBadgeText}>{item.badge}</Text>
+          </View>
+          <Text style={styles.heroTitle}>{item.title}</Text>
+          <Text style={styles.heroHighlight}>{item.titleHighlight}</Text>
+          <Text style={styles.heroDesc}>{item.desc}</Text>
+
+          <TouchableOpacity style={[styles.heroBtn, { backgroundColor: item.btnColor }]}>
+            <Text style={styles.heroBtnText}>{item.cta}</Text>
+            <Ionicons name="arrow-forward" size={16} color="#fff" />
+          </TouchableOpacity>
         </View>
       </ImageBackground>
     </View>
@@ -173,7 +173,7 @@ export default function HomeScreen() {
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
-      
+
       {/* 1. Header Area Match Web */}
       <View style={styles.headerRow}>
         <Text style={styles.headerBrandMark}>EcomViet</Text>
@@ -235,50 +235,50 @@ export default function HomeScreen() {
 
         {/* 3. Hero Carousel */}
         <View style={styles.heroSection}>
-           <FlatList 
-             data={HERO_SLIDES}
-             horizontal
-             pagingEnabled
-             showsHorizontalScrollIndicator={false}
-             keyExtractor={(_, index) => index.toString()}
-             renderItem={renderHeroSlide}
-             onMomentumScrollEnd={(event) => {
-                const index = Math.round(event.nativeEvent.contentOffset.x / (width - SIZES.lg * 2))
-                setActiveSlide(index)
-             }}
-           />
-           <View style={styles.paginationDots}>
-              {HERO_SLIDES.map((_, idx) => (
-                 <View key={idx} style={[styles.dot, activeSlide === idx && styles.dotActive]} />
-              ))}
-           </View>
+          <FlatList
+            data={HERO_SLIDES}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(_, index) => index.toString()}
+            renderItem={renderHeroSlide}
+            onMomentumScrollEnd={(event) => {
+              const index = Math.round(event.nativeEvent.contentOffset.x / (width - SIZES.lg * 2))
+              setActiveSlide(index)
+            }}
+          />
+          <View style={styles.paginationDots}>
+            {HERO_SLIDES.map((_, idx) => (
+              <View key={idx} style={[styles.dot, activeSlide === idx && styles.dotActive]} />
+            ))}
+          </View>
         </View>
 
         {/* 4. Selling Points Grid */}
         <View style={styles.sellingPointsWrap}>
-           {SELLING_POINTS.map((sp, idx) => (
-             <View key={idx} style={styles.sellingPointItem}>
-                <Ionicons name={sp.icon as any} size={24} color={COLORS.primary} />
-                <View style={styles.sellingPointTexts}>
-                   <Text style={styles.spLabel} numberOfLines={1}>{sp.label}</Text>
-                   <Text style={styles.spSub} numberOfLines={1}>{sp.sub}</Text>
-                </View>
-             </View>
-           ))}
+          {SELLING_POINTS.map((sp, idx) => (
+            <View key={idx} style={styles.sellingPointItem}>
+              <Ionicons name={sp.icon as any} size={24} color={COLORS.primary} />
+              <View style={styles.sellingPointTexts}>
+                <Text style={styles.spLabel} numberOfLines={1}>{sp.label}</Text>
+                <Text style={styles.spSub} numberOfLines={1}>{sp.sub}</Text>
+              </View>
+            </View>
+          ))}
         </View>
 
         {/* 5. Categories (Web Style) */}
         <View style={styles.sectionWrap}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleWrap}>
-               <View style={styles.sectionTitleIndicator} />
-               <Text style={styles.sectionTitleMain}>Danh mục nổi bật</Text>
+              <View style={styles.sectionTitleIndicator} />
+              <Text style={styles.sectionTitleMain}>Danh mục nổi bật</Text>
             </View>
             <TouchableOpacity onPress={() => router.push('/search')}>
               <Text style={styles.seeAllText}>Xem tất cả</Text>
             </TouchableOpacity>
           </View>
-          
+
           <FlatList
             data={categories}
             renderItem={renderCategoryItem}
@@ -294,19 +294,19 @@ export default function HomeScreen() {
           <View style={[styles.sectionWrap, styles.tintBgWrapper]}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionTitleWrap}>
-                 <Text style={[styles.sectionTitleMain, {color: COLORS.secondary}]}>Sản phẩm bán chạy</Text>
+                <Text style={[styles.sectionTitleMain, { color: COLORS.secondary }]}>Sản phẩm bán chạy</Text>
               </View>
               <TouchableOpacity onPress={() => router.push('/products?sortBy=best_seller')}>
                 <Text style={styles.seeAllText}>Xem tất cả</Text>
               </TouchableOpacity>
             </View>
-            
+
             <FlatList
               data={featuredProducts}
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ paddingHorizontal: SIZES.lg, gap: SIZES.md }}
-              renderItem={({item}) => (
+              renderItem={({ item }) => (
                 <View style={{ width: 160 }}>
                   <ProductCard product={item} onPress={() => router.push(`/products/${item.slug}`)} />
                 </View>
@@ -319,11 +319,11 @@ export default function HomeScreen() {
         <View style={styles.sectionWrap}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleWrap}>
-               <View style={[styles.sectionTitleIndicator, {backgroundColor: COLORS.secondary}]} />
-               <Text style={styles.sectionTitleMain}>Tất cả sản phẩm</Text>
+              <View style={[styles.sectionTitleIndicator, { backgroundColor: COLORS.secondary }]} />
+              <Text style={styles.sectionTitleMain}>Tất cả sản phẩm</Text>
             </View>
           </View>
-          
+
           <View style={styles.productGridContainer}>
             {newProducts.map((product) => (
               <View key={product.id} style={styles.gridItemWrap}>
@@ -334,13 +334,13 @@ export default function HomeScreen() {
               </View>
             ))}
           </View>
-          
+
           <TouchableOpacity style={styles.loadMoreBtn} onPress={() => router.push('/products?sortBy=newest')}>
-             <Text style={styles.loadMoreText}>Xem tất cả sản phẩm</Text>
-             <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
+            <Text style={styles.loadMoreText}>Xem tất cả sản phẩm</Text>
+            <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
           </TouchableOpacity>
         </View>
-        
+
         {/* Footer info padding */}
         <View style={{ height: 40 }} />
       </ScrollView>

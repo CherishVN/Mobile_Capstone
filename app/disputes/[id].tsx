@@ -439,7 +439,7 @@ export default function DisputeDetailScreen() {
         onRequestClose={() => setRespondVisible(false)}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.modalOverlay}
         >
           <View style={styles.modalBox}>

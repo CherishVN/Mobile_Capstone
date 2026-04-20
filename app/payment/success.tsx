@@ -82,7 +82,7 @@ export default function PaymentSuccessScreen() {
           style={styles.secondary}
           onPress={orderId ? goToHome : () => router.replace('/(tabs)/home')}
         >
-          <Text style={styles.secondaryText}>Tiếp tục mua s��m</Text>
+          <Text style={styles.secondaryText}>Tiếp tục mua sắm</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

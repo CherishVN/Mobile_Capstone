@@ -240,7 +240,7 @@ export default function ConversationChatScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <StatusBar style="dark" />
       <View style={[styles.header, { paddingTop: Math.max(insets.top, SIZES.xxl) + 10 }]}>

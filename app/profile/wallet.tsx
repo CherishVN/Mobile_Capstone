@@ -269,7 +269,7 @@ export default function WalletScreen() {
       >
         <KeyboardAvoidingView
           style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <View style={[styles.modalSheet, { paddingBottom: insets.bottom + SIZES.md }]}>
             {/* Modal header */}

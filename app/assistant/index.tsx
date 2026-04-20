@@ -781,7 +781,7 @@ export default function AssistantScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
     >
       <StatusBar style="dark" />
@@ -1125,6 +1125,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     padding: SIZES.md,
+    paddingBottom: 34,
     gap: SIZES.sm,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,

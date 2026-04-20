@@ -1086,7 +1086,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SIZES.md,
     paddingVertical: SIZES.sm,
-    paddingBottom: SIZES.lg, // Safe area for phones
+    paddingBottom: 34, // Safe area for Android nav bar
     elevation: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
