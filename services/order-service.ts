@@ -6,9 +6,18 @@ import {
   type ApiCustomerOrderSummary,
 } from '@/utils/order-mapper'
 
+export interface ShopShippingOption {
+  shopId: string
+  shippingProvider?: string
+  shippingServiceId?: string
+  shippingFee: number
+  estimatedDeliveryDate?: string | null
+}
+
 export interface CheckoutRequest {
   cartId: string
   shippingAddressId: string
+  shippingOptions: ShopShippingOption[]
 }
 
 /** Body từ POST /api/cart/checkout */
@@ -69,6 +78,7 @@ export const orderService = {
     api.post<CheckoutApiBody>('/api/cart/checkout', {
       cartId: data.cartId,
       shippingAddressId: data.shippingAddressId,
+      shippingOptions: data.shippingOptions,
     }),
 
   /** Chỉ đơn chờ thanh toán (0) — khớp backend cancel-pending */

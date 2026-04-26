@@ -29,11 +29,14 @@ import {
   type Ward,
 } from '@/services/vietnam-provinces'
 import { supabase } from '@/lib/supabase'
+import { normalizeVietnamPhone, isVietnamPhoneLocal } from '@/utils/phone-vn'
 import type {
   RegisterSellerRequest,
+  SellerIdentityInfo,
   ShopDocumentInput,
   UserProfileResponse,
 } from '@/types/profile'
+import { recognizeVietnamIdCard, type VnmIdOcrData } from '@/services/vnm-id-ocr'
 
 type Step = 1 | 2 | 3 | 4
 
@@ -93,34 +96,147 @@ const INITIAL_FORM: SellerFormState = {
   bankAccountName: '',
 }
 
-const DOC_SLOTS_BASE: DocSlot[] = [
-  {
-    docType: 'cccd_front',
-    label: 'CCCD / CMND mặt trước',
-    required: true,
-    hint: 'Ảnh rõ ràng, không bị che khuất',
-  },
-  {
-    docType: 'cccd_back',
-    label: 'CCCD / CMND mặt sau',
-    required: true,
-    hint: 'Ảnh rõ ràng, không bị che khuất',
-  },
-]
-
-const DOC_SLOT_BUSINESS: DocSlot = {
+const DOC_SLOT_CCCD_FRONT: DocSlot = {
+  docType: 'cccd_front',
+  label: 'CCCD mặt trước',
+  required: true,
+  hint: 'Bắt buộc — tối đa 5 MB',
+}
+const DOC_SLOT_CCCD_BACK: DocSlot = {
+  docType: 'cccd_back',
+  label: 'CCCD mặt sau',
+  required: true,
+  hint: 'Bắt buộc — tối đa 5 MB',
+}
+const DOC_SLOT_GPKD: DocSlot = {
   docType: 'business_license',
   label: 'Giấy phép kinh doanh',
   required: true,
   hint: 'Bắt buộc với hộ kinh doanh và công ty',
 }
+const DOC_SLOT_TAX: DocSlot = {
+  docType: 'tax_cert',
+  label: 'Giấy chứng nhận MST (tuỳ chọn)',
+  required: false,
+  hint: 'Tuỳ chọn — nếu có',
+}
 
+/** Khớp web: luôn có CCCD; hộ/công ty thêm GPKD/MST (upload lên server chỉ GPKD/MST, CCCD dùng OCR) */
 function getDocSlots(businessType: string): DocSlot[] {
-  const slots = [...DOC_SLOTS_BASE]
+  const slots: DocSlot[] = [DOC_SLOT_CCCD_FRONT, DOC_SLOT_CCCD_BACK]
   if (businessType === 'company' || businessType === 'household') {
-    slots.push(DOC_SLOT_BUSINESS)
+    slots.push(DOC_SLOT_GPKD, DOC_SLOT_TAX)
   }
   return slots
+}
+
+type IdCardFormState = {
+  name: string
+  idNumber: string
+  dob: string
+  sex: string
+  nationality: string
+  home: string
+  address: string
+  addrProvince: string
+  addrDistrict: string
+  addrWard: string
+  addrStreet: string
+  doe: string
+  cardType: string
+  issueDate: string
+  issueLoc: string
+  religion: string
+  ethnicity: string
+  features: string
+}
+
+const INITIAL_ID_CARD: IdCardFormState = {
+  name: '',
+  idNumber: '',
+  dob: '',
+  sex: '',
+  nationality: '',
+  home: '',
+  address: '',
+  addrProvince: '',
+  addrDistrict: '',
+  addrWard: '',
+  addrStreet: '',
+  doe: '',
+  cardType: '',
+  issueDate: '',
+  issueLoc: '',
+  religion: '',
+  ethnicity: '',
+  features: '',
+}
+
+function cleanOcrValue(v: string | null | undefined): string {
+  if (v == null) return ''
+  const t = String(v).trim()
+  if (!t || t.toUpperCase() === 'N/A') return ''
+  return t
+}
+
+function clearFrontOcrPart(prev: IdCardFormState): IdCardFormState {
+  return {
+    ...prev,
+    name: '',
+    idNumber: '',
+    dob: '',
+    sex: '',
+    nationality: '',
+    home: '',
+    address: '',
+    addrProvince: '',
+    addrDistrict: '',
+    addrWard: '',
+    addrStreet: '',
+    doe: '',
+    cardType: '',
+  }
+}
+
+function clearBackOcrPart(prev: IdCardFormState): IdCardFormState {
+  return {
+    ...prev,
+    issueDate: '',
+    issueLoc: '',
+    religion: '',
+    ethnicity: '',
+    features: '',
+  }
+}
+
+function mergeOcrIntoIdForm(prev: IdCardFormState, d: VnmIdOcrData): IdCardFormState {
+  const n = { ...prev }
+  const set = (k: keyof IdCardFormState, v: string | null | undefined) => {
+    const t = cleanOcrValue(v)
+    if (t) (n as Record<string, string>)[k] = t
+  }
+  set('name', d.name)
+  set('idNumber', d.id)
+  set('dob', d.dob)
+  set('sex', d.sex)
+  set('nationality', d.nationality)
+  set('home', d.home)
+  set('address', d.address)
+  if (d.addressEntities) {
+    set('addrProvince', d.addressEntities.province)
+    set('addrDistrict', d.addressEntities.district)
+    set('addrWard', d.addressEntities.ward)
+    set('addrStreet', d.addressEntities.street)
+  }
+  set('doe', d.doe)
+  const tParts = [cleanOcrValue(d.type), cleanOcrValue(d.typeNew)].filter(Boolean)
+  if (tParts.length) n.cardType = tParts.join(' · ')
+  set('issueDate', d.issueDate)
+  set('issueLoc', d.issueLoc)
+  set('religion', d.religion)
+  set('ethnicity', d.ethnicity)
+  set('features', d.features)
+  return n
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -149,11 +265,24 @@ export default function RegisterSellerScreen() {
   const [docFiles, setDocFiles] = useState<Record<string, DocFile>>({})
   const [uploadingDocs, setUploadingDocs] = useState<Record<string, boolean>>({})
 
+  const [idCardForm, setIdCardForm] = useState<IdCardFormState>(INITIAL_ID_CARD)
+  const [ocrLoadingFront, setOcrLoadingFront] = useState(false)
+  const [ocrLoadingBack, setOcrLoadingBack] = useState(false)
+  const [ocrAnalyzing, setOcrAnalyzing] = useState(false)
+
   const [provinceSheetVisible, setProvinceSheetVisible] = useState(false)
   const [districtSheetVisible, setDistrictSheetVisible] = useState(false)
   const [wardSheetVisible, setWardSheetVisible] = useState(false)
 
   const docSlots = useMemo(() => getDocSlots(form.businessType), [form.businessType])
+  const cccdSlots = useMemo(
+    () => docSlots.filter((s) => s.docType === 'cccd_front' || s.docType === 'cccd_back'),
+    [docSlots]
+  )
+  const businessDocSlots = useMemo(
+    () => docSlots.filter((s) => s.docType !== 'cccd_front' && s.docType !== 'cccd_back'),
+    [docSlots]
+  )
 
   const selectedProvinceName = useMemo(
     () => provinces.find((p) => String(p.code) === form.provinceId)?.name ?? '',
@@ -295,8 +424,85 @@ export default function RegisterSellerScreen() {
           fileUrl: '',
         },
       }))
+      if (docType === 'cccd_front') {
+        setIdCardForm((p) => clearFrontOcrPart(p))
+      } else if (docType === 'cccd_back') {
+        setIdCardForm((p) => clearBackOcrPart(p))
+      }
     } catch {
       Alert.alert('Lỗi', 'Không thể chọn ảnh')
+    }
+  }
+
+  const runCccdOcr = async (
+    side: 'front' | 'back',
+    doc: DocFile,
+  ): Promise<boolean> => {
+    if (side === 'front') {
+      setOcrLoadingFront(true)
+      setIdCardForm((p) => clearFrontOcrPart(p))
+    } else {
+      setOcrLoadingBack(true)
+      setIdCardForm((p) => clearBackOcrPart(p))
+    }
+    try {
+      const res = await recognizeVietnamIdCard({
+        uri: doc.uri,
+        name: side === 'front' ? 'cccd_front.jpg' : 'cccd_back.jpg',
+        type: doc.mimeType,
+      })
+      if (!res.success || !res.data) {
+        Alert.alert('OCR', res.message ?? 'Không đọc được thông tin từ ảnh')
+        return false
+      }
+      const d = res.data
+      setIdCardForm((prev) => mergeOcrIntoIdForm(prev, d))
+      if (d.address && side === 'front') {
+        setForm((prev) => ({
+          ...prev,
+          addressLine: prev.addressLine.trim() ? prev.addressLine : d.address!,
+        }))
+      }
+      return true
+    } catch (e) {
+      Alert.alert('Lỗi', getErrorMessage(e, 'Lỗi khi gọi dịch vụ đọc CCCD'))
+      return false
+    } finally {
+      if (side === 'front') {
+        setOcrLoadingFront(false)
+      } else {
+        setOcrLoadingBack(false)
+      }
+    }
+  }
+
+  const analyzeIdCards = async () => {
+    const front = docFiles.cccd_front
+    const back = docFiles.cccd_back
+    if (!front && !back) {
+      Alert.alert('Thiếu ảnh', 'Vui lòng chọn ảnh mặt trước và/hoặc mặt sau, rồi bấm phân tích')
+      return
+    }
+    setOcrAnalyzing(true)
+    try {
+      let ok = true
+      if (front) {
+        const r = await runCccdOcr('front', front)
+        if (!r) {
+          ok = false
+        }
+      }
+      if (back) {
+        const r = await runCccdOcr('back', back)
+        if (!r) {
+          ok = false
+        }
+      }
+      if (ok) {
+        Alert.alert('Thành công', 'Đã phân tích xong — vui lòng kiểm tra nội dung bên dưới')
+      }
+    } finally {
+      setOcrAnalyzing(false)
     }
   }
 
@@ -358,6 +564,11 @@ export default function RegisterSellerScreen() {
         Alert.alert('Thiếu thông tin', 'Vui lòng nhập số điện thoại shop')
         return false
       }
+      const p = normalizeVietnamPhone(form.phone)
+      if (!isVietnamPhoneLocal(p)) {
+        Alert.alert('Số điện thoại', 'Số điện thoại shop không hợp lệ (đầu 0 hoặc +84, 9–10 số).')
+        return false
+      }
       if (!form.addressLine.trim()) {
         Alert.alert('Thiếu thông tin', 'Vui lòng nhập địa chỉ lấy hàng')
         return false
@@ -377,7 +588,18 @@ export default function RegisterSellerScreen() {
     }
 
     if (targetStep === 4) {
-      const requiredSlots = docSlots.filter((slot) => slot.required)
+      if (!docFiles.cccd_front || !docFiles.cccd_back) {
+        Alert.alert('Thiếu tài liệu', 'Vui lòng tải ảnh CCCD mặt trước và mặt sau')
+        return false
+      }
+      if (!idCardForm.name.trim()) {
+        Alert.alert(
+          'Thiếu thông tin',
+          'Vui lòng bấm "Phân tích căn cước" sau khi chọn ảnh để hệ thống điền họ tên từ CCCD (giống website).'
+        )
+        return false
+      }
+      const requiredSlots = businessDocSlots.filter((slot) => slot.required)
       for (const slot of requiredSlots) {
         if (!docFiles[slot.docType]) {
           Alert.alert('Thiếu tài liệu', `Vui lòng tải lên: ${slot.label}`)
@@ -423,17 +645,40 @@ export default function RegisterSellerScreen() {
     try {
       setSubmitting(true)
 
+      const fileDocTypes = new Set(['business_license', 'tax_cert'])
       const documents: ShopDocumentInput[] = []
       for (const slot of docSlots) {
+        if (!fileDocTypes.has(slot.docType)) continue
         if (!docFiles[slot.docType]) continue
         const fileUrl = await uploadDoc(slot.docType, userId)
         documents.push({ docType: slot.docType, fileUrl })
       }
 
+      const identity: SellerIdentityInfo = {
+        fullName: idCardForm.name.trim(),
+        idNumber: idCardForm.idNumber.trim() || null,
+        dateOfBirth: idCardForm.dob.trim() || null,
+        sex: idCardForm.sex.trim() || null,
+        nationality: idCardForm.nationality.trim() || null,
+        homeTown: idCardForm.home.trim() || null,
+        permanentAddress: idCardForm.address.trim() || null,
+        addrProvince: idCardForm.addrProvince.trim() || null,
+        addrDistrict: idCardForm.addrDistrict.trim() || null,
+        addrWard: idCardForm.addrWard.trim() || null,
+        addrStreet: idCardForm.addrStreet.trim() || null,
+        dateOfExpiry: idCardForm.doe.trim() || null,
+        cardType: idCardForm.cardType.trim() || null,
+        issueDate: idCardForm.issueDate.trim() || null,
+        issuePlace: idCardForm.issueLoc.trim() || null,
+        religion: idCardForm.religion.trim() || null,
+        ethnicity: idCardForm.ethnicity.trim() || null,
+        features: idCardForm.features.trim() || null,
+      }
+
       const payload: RegisterSellerRequest = {
         shopName: form.shopName.trim(),
         shopDescription: form.shopDescription.trim() || null,
-        phone: form.phone.trim(),
+        phone: normalizeVietnamPhone(form.phone),
         addressLine: form.addressLine.trim(),
         wardCode: form.wardCode,
         districtId,
@@ -445,7 +690,8 @@ export default function RegisterSellerScreen() {
         bankName: form.bankName.trim() || null,
         bankAccountNumber: form.bankAccountNumber.trim() || null,
         bankAccountName: form.bankAccountName.trim() || null,
-        documents,
+        identity,
+        documents: documents.length > 0 ? documents : undefined,
       }
 
       const res = await profileService.registerSeller(payload)
@@ -568,6 +814,8 @@ export default function RegisterSellerScreen() {
               title="Đăng ký lại"
               onPress={() => {
                 setProfile((prev) => (prev ? { ...prev, shop: null } : prev))
+                setIdCardForm(INITIAL_ID_CARD)
+                setDocFiles({})
                 setStep(1)
               }}
               style={styles.rejectedActionBtn}
@@ -578,7 +826,7 @@ export default function RegisterSellerScreen() {
     )
   }
 
-  if (profile.shop) {
+  if (profile.shop && profile.shop.verificationStatus === 1) {
     return (
       <View style={styles.container}>
         <StatusBar style="dark" />
@@ -591,9 +839,9 @@ export default function RegisterSellerScreen() {
         </View>
 
         <View style={styles.notEligibleCard}>
-          <Text style={styles.notEligibleTitle}>Tài khoản hiện tại không cần đăng ký</Text>
+          <Text style={styles.notEligibleTitle}>Cửa hàng đã được duyệt</Text>
           <Text style={styles.notEligibleText}>
-            Tài khoản hiện tại không cần thực hiện đăng ký seller mới.
+            Tài khoản đã gắn shop đã phê duyệt. Nếu bạn vẫn thấy thông báo này, hãy đăng xuất và đăng nhập lại.
           </Text>
           <Button
             title="Quay lại hồ sơ"
@@ -800,25 +1048,28 @@ export default function RegisterSellerScreen() {
         {step === 4 && (
           <View style={styles.card}>
             <View style={styles.infoBanner}>
-              <Ionicons name="information-circle-outline" size={18} color={COLORS.primary} />
+              <Ionicons name="document-text-outline" size={18} color={COLORS.primary} />
               <View style={styles.infoTextWrap}>
-                <Text style={styles.infoTitle}>Hồ sơ xác minh danh tính</Text>
+                <Text style={styles.infoTitle}>Xác minh danh tính (CCCD / CMND)</Text>
                 <Text style={styles.infoText}>
-                  Ảnh được lưu trữ bảo mật và chỉ dùng để xét duyệt. Yêu cầu ảnh rõ nét, đủ ánh sáng, không bị cắt xén.
+                  Chọn ảnh mặt trước/mặt sau, sau đó bấm Phân tích căn cước. Hệ thống gọi dịch vụ đọc CCCD
+                  qua server (FPT.AI) — dữ liệu hiển thị bên dưới để bạn kiểm tra, không sửa tay trên app.
                 </Text>
               </View>
             </View>
 
             <View style={styles.docGrid}>
-              {docSlots.map((slot) => {
+              {cccdSlots.map((slot) => {
                 const doc = docFiles[slot.docType]
                 const isUploading = uploadingDocs[slot.docType]
+                const ocrWait =
+                  slot.docType === 'cccd_front' ? ocrLoadingFront : slot.docType === 'cccd_back' ? ocrLoadingBack : false
                 return (
                   <DocUploadCard
                     key={slot.docType}
                     slot={slot}
                     doc={doc}
-                    isUploading={isUploading}
+                    isUploading={!!isUploading || ocrWait}
                     onPickFile={() => pickDocFromLibrary(slot.docType)}
                     onRemove={() => {
                       setDocFiles((prev) => {
@@ -832,10 +1083,69 @@ export default function RegisterSellerScreen() {
               })}
             </View>
 
+            <View style={styles.ocrActionRow}>
+              <Button
+                title={ocrAnalyzing ? 'Đang phân tích...' : 'Phân tích căn cước'}
+                onPress={analyzeIdCards}
+                disabled={ocrAnalyzing}
+                loading={ocrAnalyzing}
+                fullWidth
+              />
+            </View>
+            <Text style={styles.ocrActionHint}>
+              Gọi sau khi chọn ảnh. Có cả mặt trước và mặt sau sẽ đọc cả hai (mặt trước trước, mặt sau sau).
+            </Text>
+
+            <Text style={styles.idSectionHint}>Thông tin trên CCCD/CMND (chỉ xem — từ OCR)</Text>
+            <ReadOnlyField label="Họ và tên" value={idCardForm.name} />
+            <ReadOnlyField label="Số CCCD/CMND" value={idCardForm.idNumber} />
+            <ReadOnlyField label="Ngày sinh" value={idCardForm.dob} />
+            <ReadOnlyField label="Giới tính" value={idCardForm.sex} />
+            <ReadOnlyField label="Quốc tịch" value={idCardForm.nationality} />
+            <ReadOnlyField label="Quê quán" value={idCardForm.home} multiline />
+            <ReadOnlyField label="Nơi thường trú" value={idCardForm.address} multiline />
+            <Text style={styles.idSectionHint}>Mặt sau / chi tiết</Text>
+            <ReadOnlyField label="Loại thẻ" value={idCardForm.cardType} />
+            <ReadOnlyField label="Ngày cấp" value={idCardForm.issueDate} />
+            <ReadOnlyField label="Nơi cấp" value={idCardForm.issueLoc} multiline />
+            <ReadOnlyField label="Hạn thẻ" value={idCardForm.doe} />
+            <ReadOnlyField label="Tôn giáo" value={idCardForm.religion} />
+            <ReadOnlyField label="Dân tộc" value={idCardForm.ethnicity} />
+            <ReadOnlyField label="Đặc điểm nhận dạng" value={idCardForm.features} multiline />
+
+            {businessDocSlots.length > 0 && (
+              <>
+                <Text style={styles.idSectionHint}>Hồ sơ kinh doanh (bắt buộc với hộ / công ty)</Text>
+                <View style={styles.docGrid}>
+                  {businessDocSlots.map((slot) => {
+                    const doc = docFiles[slot.docType]
+                    const isUploading = uploadingDocs[slot.docType]
+                    return (
+                      <DocUploadCard
+                        key={slot.docType}
+                        slot={slot}
+                        doc={doc}
+                        isUploading={isUploading}
+                        onPickFile={() => pickDocFromLibrary(slot.docType)}
+                        onRemove={() => {
+                          setDocFiles((prev) => {
+                            const copy = { ...prev }
+                            delete copy[slot.docType]
+                            return copy
+                          })
+                        }}
+                      />
+                    )
+                  })}
+                </View>
+              </>
+            )}
+
             <View style={styles.summaryBox}>
-              <Text style={styles.summaryTitle}>Thông tin sẽ gửi:</Text>
+              <Text style={styles.summaryTitle}>Tóm tắt:</Text>
               <Text style={styles.summaryText}>Shop: {form.shopName || '-'}</Text>
               <Text style={styles.summaryText}>Loại hình: {form.businessType}</Text>
+              <Text style={styles.summaryText}>Họ tên CCCD: {idCardForm.name || '(chưa phân tích)'}</Text>
               <Text style={styles.summaryText}>
                 Địa chỉ GHN: {form.addressLine || '-'}
                 {selectedWardName ? `, ${selectedWardName}` : ''}
@@ -843,15 +1153,25 @@ export default function RegisterSellerScreen() {
                 {form.city ? `, ${form.city}` : ''}
               </Text>
               <Text style={styles.summaryText}>
-                Tài liệu:{' '}
-                {docSlots
+                CCCD:{' '}
+                {cccdSlots
                   .map((s) =>
-                    docFiles[s.docType]
-                      ? `OK ${s.label}`
-                      : `Thiếu ${s.label}${s.required ? ' (bắt buộc)' : ''}`
+                    docFiles[s.docType] ? `OK ${s.label}` : `Thiếu ${s.label}${s.required ? ' (bắt buộc)' : ''}`
                   )
                   .join(' | ')}
               </Text>
+              {businessDocSlots.length > 0 ? (
+                <Text style={styles.summaryText}>
+                  Hồ sơ KD:{' '}
+                  {businessDocSlots
+                    .map((s) =>
+                      docFiles[s.docType]
+                        ? `OK ${s.label}`
+                        : `Thiếu ${s.label}${s.required ? ' (bắt buộc)' : ''}`
+                    )
+                    .join(' | ')}
+                </Text>
+              ) : null}
             </View>
           </View>
         )}
@@ -915,6 +1235,26 @@ export default function RegisterSellerScreen() {
         }}
       />
     </KeyboardAvoidingView>
+  )
+}
+
+type ReadOnlyFieldProps = {
+  label: string
+  value: string
+  multiline?: boolean
+}
+
+function ReadOnlyField({ label, value, multiline }: ReadOnlyFieldProps) {
+  return (
+    <View style={styles.readOnlyField}>
+      <Text style={styles.readOnlyLabel}>{label}</Text>
+      <Text
+        style={[styles.readOnlyValue, multiline ? styles.readOnlyValueMulti : undefined]}
+        numberOfLines={multiline ? 12 : 2}
+      >
+        {value.trim() || '—'}
+      </Text>
+    </View>
   )
 }
 
@@ -1212,6 +1552,46 @@ const styles = StyleSheet.create({
     fontSize: FONTS.size.xs,
     color: COLORS.textSecondary,
     lineHeight: 18,
+  },
+  idSectionHint: {
+    fontSize: FONTS.size.xs,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginTop: SIZES.sm,
+    marginBottom: SIZES.xs,
+  },
+  ocrActionRow: {
+    marginTop: SIZES.md,
+  },
+  ocrActionHint: {
+    fontSize: FONTS.size.xs,
+    color: COLORS.textSecondary,
+    lineHeight: 18,
+    marginTop: SIZES.sm,
+    marginBottom: SIZES.sm,
+  },
+  readOnlyField: {
+    marginBottom: SIZES.md,
+  },
+  readOnlyLabel: {
+    fontSize: FONTS.size.xs,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginBottom: 4,
+  },
+  readOnlyValue: {
+    fontSize: FONTS.size.md,
+    color: COLORS.text,
+    lineHeight: 22,
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    paddingHorizontal: SIZES.md,
+    paddingVertical: SIZES.sm,
+  },
+  readOnlyValueMulti: {
+    minHeight: 56,
   },
   docGrid: {
     gap: SIZES.md,

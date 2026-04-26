@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react'
+import { useGHNShippingFee } from '@/hooks/useGHNShippingFee'
 import {
   View,
   Text,
@@ -29,23 +30,22 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { markPendingPaymentOrder } from '@/lib/pending-payment'
 
 const CHECKOUT_SELECTED_IDS_KEY = 'checkout:selected-item-ids'
-const SHIPPING_FEE_PER_SHOP = 30000
 
 type PaymentMethod = 'vnpay' | 'momo'
 
-type CartItemWithShop = CartItem & {
-  shopId?: string
-  shopName?: string
-}
+type CartItemWithShop = CartItem
 
 interface ShopGroup {
   key: string
+  shopId?: string
   shopName: string
+  shopSlug?: string
   items: CartItemWithShop[]
   subtotal: number
-  shippingFee: number
-  total: number
   itemCount: number
+  ghnShopId?: number | null
+  fromDistrictId?: number | null
+  fromWardCode?: string | null
 }
 
 export default function CheckoutScreen() {
@@ -98,6 +98,7 @@ export default function CheckoutScreen() {
           ...item,
           shopId: item.shopId ?? resolved?.shopId,
           shopName: item.shopName ?? resolved?.shopName ?? 'Shop không xác định',
+          shopSlug: item.shopSlug ?? undefined,
         }
       })
     } catch {
@@ -154,7 +155,7 @@ export default function CheckoutScreen() {
     }
   }
 
-  /* ── Shop grouping (like web) ── */
+  /* ── Shop grouping (khớp web — mỗi shop có GHN kho) ── */
   const groupedByShop = useMemo<ShopGroup[]>(() => {
     const map = new Map<string, ShopGroup>()
 
@@ -167,28 +168,64 @@ export default function CheckoutScreen() {
         existing.items.push(item)
         existing.subtotal += item.lineTotal
         existing.itemCount += item.quantity
+        if (!existing.shopSlug && item.shopSlug) {
+          existing.shopSlug = item.shopSlug
+        }
+        if (existing.ghnShopId == null && item.ghnShopId != null) {
+          existing.ghnShopId = item.ghnShopId
+        }
+        if (existing.fromDistrictId == null && item.fromDistrictId != null) {
+          existing.fromDistrictId = item.fromDistrictId
+        }
+        if (existing.fromWardCode == null && item.fromWardCode) {
+          existing.fromWardCode = item.fromWardCode
+        }
+        if (!existing.shopId && item.shopId) {
+          existing.shopId = item.shopId
+        }
         return
       }
 
       map.set(key, {
         key,
+        shopId: item.shopId,
         shopName,
+        shopSlug: item.shopSlug,
         items: [item],
         subtotal: item.lineTotal,
-        shippingFee: SHIPPING_FEE_PER_SHOP,
-        total: 0,
         itemCount: item.quantity,
+        ghnShopId: item.ghnShopId ?? null,
+        fromDistrictId: item.fromDistrictId ?? null,
+        fromWardCode: item.fromWardCode ?? null,
       })
     })
 
-    return Array.from(map.values()).map((group) => ({
-      ...group,
-      total: group.subtotal + group.shippingFee,
-    }))
+    return Array.from(map.values())
   }, [checkoutItems])
 
-  const subtotalAmount = groupedByShop.reduce((s, g) => s + g.subtotal, 0)
-  const shippingAmount = groupedByShop.reduce((s, g) => s + g.shippingFee, 0)
+  const shopInputs = useMemo(
+    () =>
+      groupedByShop.map((group) => ({
+        key: group.key,
+        totalWeightGrams: group.items.reduce((sum, item) => sum + item.quantity * 500, 0),
+        totalValue: group.subtotal,
+        ghnShopId: group.ghnShopId,
+        fromDistrictId: group.fromDistrictId,
+        fromWardCode: group.fromWardCode,
+      })),
+    [groupedByShop]
+  )
+
+  const { shopFees, totalShippingFee, isCalculating, hasBlockingError } = useGHNShippingFee(
+    shopInputs,
+    selectedAddress ?? undefined
+  )
+
+  const subtotalAmount = useMemo(
+    () => groupedByShop.reduce((sum, group) => sum + group.subtotal, 0),
+    [groupedByShop]
+  )
+  const shippingAmount = totalShippingFee
   const grandTotal = subtotalAmount + shippingAmount
   const totalProductCount = checkoutItems.reduce((s, i) => s + i.quantity, 0)
 
@@ -198,11 +235,69 @@ export default function CheckoutScreen() {
       return
     }
 
+    if (checkoutItems.length === 0) {
+      Alert.alert('Lỗi', 'Không có sản phẩm để thanh toán')
+      return
+    }
+
+    if (isCalculating) {
+      Alert.alert('Lỗi', 'Vui lòng đợi tính phí vận chuyển (GHN) xong')
+      return
+    }
+
+    if (hasBlockingError) {
+      Alert.alert(
+        'Lỗi',
+        'Chưa tính được phí giao hàng. Kiểm tra địa chỉ (tỉnh/quận/xã trùng GHN), cấu hình shop, hoặc thử lại sau.'
+      )
+      return
+    }
+
+    for (const group of groupedByShop) {
+      if (!group.shopId) {
+        Alert.alert('Lỗi', 'Thiếu mã shop cho một số sản phẩm. Vui lòng tải lại giỏ hoặc liên hệ hỗ trợ.')
+        return
+      }
+      const sf = shopFees.get(group.key)
+      if (!sf || sf.fee == null) {
+        Alert.alert(
+          'Lỗi',
+          'Thiếu phí vận chuyển theo từng shop. Vui lòng chọn địa chỉ hợp lệ và đợi hệ thống tính phí GHN (tỉnh/quận/xã phải khớp dữ liệu GHN).'
+        )
+        return
+      }
+    }
+
+    const shippingOptions = groupedByShop
+      .filter((g) => !!g.shopId)
+      .map((group) => {
+        const sf = shopFees.get(group.key)
+        const fee = sf?.fee
+        if (fee == null) {
+          return null
+        }
+        const estimatedDeliveryDate = sf?.leadTime ? new Date(sf.leadTime * 1000).toISOString() : null
+        return {
+          shopId: group.shopId!,
+          shippingProvider: 'GHN' as const,
+          shippingServiceId: sf?.ghnServiceId ?? '53320',
+          shippingFee: fee,
+          estimatedDeliveryDate,
+        }
+      })
+      .filter((x): x is NonNullable<typeof x> => x != null)
+
+    if (shippingOptions.length === 0) {
+      Alert.alert('Lỗi', 'Không có lựa chọn vận chuyển hợp lệ. Vui lòng thử lại.')
+      return
+    }
+
     setSubmitting(true)
     try {
       const response = await orderService.checkout({
         cartId: cart.id,
         shippingAddressId: selectedAddress.id,
+        shippingOptions,
       })
 
       const payload = response.data
@@ -309,6 +404,16 @@ export default function CheckoutScreen() {
             <Text style={styles.sectionTitle}>Địa chỉ nhận hàng</Text>
           </View>
 
+          {selectedAddress && hasBlockingError && !isCalculating ? (
+            <View style={styles.ghnWarningBanner}>
+              <Ionicons name="alert-circle" size={18} color={COLORS.error} />
+              <Text style={styles.ghnWarningText}>
+                Chưa tính được phí GHN. Kiểm tra tỉnh/quận/xã trùng mạng GHN, hoặc cấu hình cửa hàng người bán. Thêm
+                EXPO_PUBLIC_GHN_TOKEN (cùng token web) nếu thiếu cấu hình app.
+              </Text>
+            </View>
+          ) : null}
+
           {selectedAddress ? (
             <TouchableOpacity
               style={styles.addressCard}
@@ -381,14 +486,51 @@ export default function CheckoutScreen() {
             <View style={styles.shopFooter}>
               <View style={styles.shippingRow}>
                 <Ionicons name="car-outline" size={16} color={COLORS.textSecondary} />
-                <Text style={styles.shippingLabel}>Phí vận chuyển</Text>
-                <Text style={styles.shippingValue}>
-                  Nhanh - {formatPrice(group.shippingFee)}
-                </Text>
+                <Text style={styles.shippingLabel}>Phí vận chuyển (GHN)</Text>
+                {!selectedAddress ? (
+                  <Text style={styles.shippingValueMuted}>Chọn địa chỉ giao hàng</Text>
+                ) : (
+                  (() => {
+                    const sf = shopFees.get(group.key)
+                    if (!sf || sf.loading) {
+                      return (
+                        <View style={styles.shippingValueRow}>
+                          <ActivityIndicator size="small" color={COLORS.primary} />
+                          <Text style={styles.shippingPending}> Đang tính phí…</Text>
+                        </View>
+                      )
+                    }
+                    if (sf.error) {
+                      return (
+                        <View style={styles.shippingErrorCol}>
+                          <Text style={styles.shippingValueError}>Chưa tính được</Text>
+                          <Text style={styles.shippingErrorHint} numberOfLines={2}>
+                            {sf.error}
+                          </Text>
+                        </View>
+                      )
+                    }
+                    const fee = sf.fee ?? 0
+                    return <Text style={styles.shippingValue}>{formatPrice(fee)}</Text>
+                  })()
+                )}
               </View>
               <View style={styles.shopTotalRow}>
                 <Text style={styles.shopTotalLabel}>Tổng shop:</Text>
-                <Text style={styles.shopTotalValue}>{formatPrice(group.total)}</Text>
+                <Text style={styles.shopTotalValue}>
+                  {formatPrice(
+                    group.subtotal +
+                      (!selectedAddress
+                        ? 0
+                        : (() => {
+                            const sf = shopFees.get(group.key)
+                            if (!sf || sf.loading || sf.error || sf.fee == null) {
+                              return 0
+                            }
+                            return sf.fee
+                          })())
+                  )}
+                </Text>
               </View>
             </View>
           </View>
@@ -488,7 +630,12 @@ export default function CheckoutScreen() {
           title={submitting ? 'Đang xử lý...' : `Đặt hàng (${totalProductCount} sản phẩm)`}
           onPress={handleCheckout}
           loading={submitting}
-          disabled={!selectedAddress}
+          disabled={
+            !selectedAddress ||
+            isCalculating ||
+            hasBlockingError ||
+            shopInputs.length === 0
+          }
           fullWidth
           size="lg"
         />
@@ -584,6 +731,21 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     textAlign: 'center',
     fontWeight: '600',
+  },
+  ghnWarningBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SIZES.sm,
+    backgroundColor: 'rgba(220, 38, 38, 0.08)',
+    padding: SIZES.md,
+    borderRadius: 10,
+    marginBottom: SIZES.md,
+  },
+  ghnWarningText: {
+    flex: 1,
+    fontSize: FONTS.size.xs,
+    color: COLORS.text,
+    lineHeight: 18,
   },
   /* Shop group */
   shopHeader: {
@@ -690,6 +852,39 @@ const styles = StyleSheet.create({
     fontSize: FONTS.size.sm,
     fontWeight: '500',
     color: COLORS.text,
+  },
+  shippingValueMuted: {
+    fontSize: FONTS.size.xs,
+    color: COLORS.textSecondary,
+    fontStyle: 'italic',
+    textAlign: 'right',
+    flex: 1,
+  },
+  shippingValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    flex: 1,
+  },
+  shippingPending: {
+    fontSize: FONTS.size.xs,
+    color: COLORS.textSecondary,
+  },
+  shippingErrorCol: {
+    alignItems: 'flex-end',
+    flex: 1,
+    maxWidth: '65%',
+  },
+  shippingValueError: {
+    fontSize: FONTS.size.xs,
+    fontWeight: '600',
+    color: COLORS.error,
+  },
+  shippingErrorHint: {
+    fontSize: FONTS.size.xs - 1,
+    color: COLORS.textSecondary,
+    textAlign: 'right',
+    marginTop: 2,
   },
   shopTotalRow: {
     flexDirection: 'row',

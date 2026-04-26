@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { Fragment, useEffect, useMemo, useState } from 'react'
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useRouter, useLocalSearchParams } from 'expo-router'
@@ -20,7 +21,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { orderService } from '@/services/order-service'
 import { paymentService } from '@/services/payment-service'
 import { cartService } from '@/services/cart-service'
-import { Order, OrderStatus, getOrderStatusColor } from '@/types/order'
+import { Order, OrderStatus, OrderStatusStep, getOrderStatusColor, getOrderStatusLabelVi } from '@/types/order'
 import ReviewModal from '@/components/ReviewModal'
 import Button from '@/components/Button'
 import Loading from '@/components/Loading'
@@ -35,6 +36,249 @@ import ShopReviewOrderModal, {
 } from '@/components/ShopReviewOrderModal'
 
 const REORDERABLE_STATUSES = new Set([5, 6, 7, 8])
+
+/** Đồng bộ FE purchase + BE CustomerDisputeService */
+const DISPUTE_WINDOW_DAYS = 7
+const NOT_RECEIVED_MIN_DAYS_PROCESSING = 7
+const NOT_RECEIVED_MIN_DAYS_SHIPPING = 5
+const NOT_RECEIVED_DAYS_PAST_ETA = 3
+const DISPUTE_ALLOWED_STATUSES = new Set<number>([OrderStatus.Delivered, OrderStatus.Completed])
+
+function getReceiptAnchorDate(order: Order): Date {
+  const deliveredStep = order.statusTimeline?.find((s) => s.value === 5)
+  const completedStep = order.statusTimeline?.find((s) => s.value === 6)
+  const candidates = [deliveredStep?.reachedAt, completedStep?.reachedAt]
+    .filter(Boolean)
+    .map((d) => new Date(d!).getTime())
+  if (candidates.length > 0) return new Date(Math.min(...candidates))
+  return new Date(order.updatedAt ?? order.createdAt)
+}
+
+function isPastEtaPlusDays(estimated: string | null | undefined, days: number) {
+  if (!estimated) return false
+  const etaMs = new Date(estimated).getTime()
+  if (Number.isNaN(etaMs)) return false
+  return Date.now() >= etaMs + days * 86400000
+}
+
+function computeDisputeEligibility(order: Order | null) {
+  if (!order) {
+    return { canDisputePostReceipt: false, canDisputeNotReceived: false }
+  }
+  const receiptAnchor = getReceiptAnchorDate(order)
+  const canDisputePostReceipt =
+    DISPUTE_ALLOWED_STATUSES.has(order.status) &&
+    (Date.now() - receiptAnchor.getTime()) / 86400000 <= DISPUTE_WINDOW_DAYS
+
+  let canDisputeNotReceived = false
+  if (order.status === OrderStatus.Processing) {
+    const step = order.statusTimeline?.find((s) => s.value === 3)
+    const anchor = step?.reachedAt
+      ? new Date(step.reachedAt).getTime()
+      : new Date(order.updatedAt ?? order.createdAt).getTime()
+    canDisputeNotReceived = (Date.now() - anchor) / 86400000 >= NOT_RECEIVED_MIN_DAYS_PROCESSING
+  } else if (order.status === OrderStatus.Shipping) {
+    const step = order.statusTimeline?.find((s) => s.value === 4)
+    const anchor = step?.reachedAt
+      ? new Date(step.reachedAt).getTime()
+      : new Date(order.updatedAt ?? order.createdAt).getTime()
+    if ((Date.now() - anchor) / 86400000 >= NOT_RECEIVED_MIN_DAYS_SHIPPING) {
+      canDisputeNotReceived = true
+    } else if (isPastEtaPlusDays(order.estimatedDeliveryDate, NOT_RECEIVED_DAYS_PAST_ETA)) {
+      canDisputeNotReceived = true
+    }
+  } else if (order.status === OrderStatus.Delivered) {
+    canDisputeNotReceived =
+      (Date.now() - receiptAnchor.getTime()) / 86400000 <= DISPUTE_WINDOW_DAYS
+  }
+  return { canDisputePostReceipt, canDisputeNotReceived }
+}
+
+/** 7 bước giao hàng chính (0–6), đồng bộ web purchase/[id] */
+const MAIN_TIMELINE_STEPS = [0, 1, 2, 3, 4, 5, 6] as const
+
+type OrderStatusTimelineProps = {
+  currentStatus: number
+  statusTimeline: Order['statusTimeline']
+}
+
+function OrderStatusTimeline({ currentStatus, statusTimeline }: OrderStatusTimelineProps) {
+  const isCancelled = currentStatus === OrderStatus.Cancelled
+  const isRefunded = currentStatus === OrderStatus.Refunded
+  const c = getOrderStatusColor(currentStatus)
+  if (isCancelled || isRefunded) {
+    const terminal = statusTimeline?.find((s) => s.value === currentStatus)
+    return (
+      <View
+        style={[
+          styles.timelineTerminal,
+          { borderColor: c + '55', backgroundColor: c + '18' },
+        ]}
+      >
+        <View style={styles.timelineTerminalRow}>
+          <View style={[styles.timelineDot, { backgroundColor: c }]} />
+          <Text style={[styles.timelineTerminalTitle, { color: c }]}>
+            {getOrderStatusLabelVi(currentStatus)}
+          </Text>
+          <Text style={[styles.timelineTerminalSub, { color: c }]}>· Đơn hàng đã kết thúc</Text>
+        </View>
+        {terminal?.reachedAt ? (
+          <Text style={styles.timelineTerminalTime}>{formatDateTimeStatic(terminal.reachedAt)}</Text>
+        ) : null}
+      </View>
+    )
+  }
+
+  const fromApi = statusTimeline?.filter((s) => s.value >= 0 && s.value <= 6) ?? []
+  if (fromApi.length > 0) {
+    return (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.timelineScrollContent}
+        style={styles.timelineScroll}
+      >
+        <View style={styles.timelineRow}>
+          {fromApi.map((step, idx) => {
+            const isDone = step.state === 'completed'
+            const isCurrent = step.state === 'current'
+            const showTime = (isDone || isCurrent) && step.reachedAt
+            return (
+              <Fragment key={step.value}>
+                <View style={styles.timelineCol}>
+                  <View
+                    style={[
+                      styles.timelineCircle,
+                      isDone
+                        ? styles.timelineCircleDone
+                        : isCurrent
+                          ? styles.timelineCircleCurrent
+                          : styles.timelineCircleIdle,
+                    ]}
+                  >
+                    {isDone ? (
+                      <Ionicons name="checkmark" size={16} color="#fff" />
+                    ) : (
+                      <Text style={styles.timelineCircleNum}>{idx + 1}</Text>
+                    )}
+                  </View>
+                  <Text
+                    numberOfLines={2}
+                    style={[
+                      styles.timelineLabel,
+                      isDone
+                        ? styles.timelineLabelDone
+                        : isCurrent
+                          ? styles.timelineLabelCurrent
+                          : styles.timelineLabelIdle,
+                    ]}
+                  >
+                    {step.displayName || getOrderStatusLabelVi(step.value)}
+                  </Text>
+                  {showTime ? (
+                    <Text style={styles.timelineTime} numberOfLines={2}>
+                      {formatDateTimeStatic(step.reachedAt!)}
+                    </Text>
+                  ) : null}
+                </View>
+                {idx < fromApi.length - 1 ? (
+                  <View
+                    style={[
+                      styles.timelineHLine,
+                      isDone ? styles.timelineHLineDone : styles.timelineHLineIdle,
+                    ]}
+                  />
+                ) : null}
+              </Fragment>
+            )
+          })}
+        </View>
+      </ScrollView>
+    )
+  }
+
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.timelineScrollContent}
+      style={styles.timelineScroll}
+    >
+      <View style={styles.timelineRow}>
+        {MAIN_TIMELINE_STEPS.map((step, idx) => {
+          const isDone = currentStatus > step
+          const isCurrent = currentStatus === step
+          const label = getOrderStatusLabelVi(step)
+          return (
+            <Fragment key={step}>
+              <View style={styles.timelineCol}>
+                <View
+                  style={[
+                    styles.timelineCircle,
+                    isDone
+                      ? styles.timelineCircleDone
+                      : isCurrent
+                        ? styles.timelineCircleCurrent
+                        : styles.timelineCircleIdle,
+                  ]}
+                >
+                  {isDone ? (
+                    <Ionicons name="checkmark" size={16} color="#fff" />
+                  ) : (
+                    <Text style={styles.timelineCircleNum}>{idx + 1}</Text>
+                  )}
+                </View>
+                <Text
+                  numberOfLines={2}
+                  style={[
+                    styles.timelineLabel,
+                    isDone
+                      ? styles.timelineLabelDone
+                      : isCurrent
+                        ? styles.timelineLabelCurrent
+                        : styles.timelineLabelIdle,
+                  ]}
+                >
+                  {label}
+                </Text>
+              </View>
+              {idx < MAIN_TIMELINE_STEPS.length - 1 ? (
+                <View
+                  style={[
+                    styles.timelineHLine,
+                    isDone ? styles.timelineHLineDone : styles.timelineHLineIdle,
+                  ]}
+                />
+              ) : null}
+            </Fragment>
+          )
+        })}
+      </View>
+    </ScrollView>
+  )
+}
+
+function formatDateTimeStatic(iso: string) {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function formatDateShort(iso: string) {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleDateString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
+}
 
 export default function OrderDetailScreen() {
   const router = useRouter()
@@ -54,6 +298,7 @@ export default function OrderDetailScreen() {
   const [shopReviewStored, setShopReviewStored] = useState(false)
   const [productReviewOpen, setProductReviewOpen] = useState(false)
   const [shopReviewOpen, setShopReviewOpen] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
     loadOrder()
@@ -79,6 +324,23 @@ export default function OrderDetailScreen() {
       setLoading(false)
     }
   }
+
+  const onRefresh = async () => {
+    if (!orderId) return
+    setRefreshing(true)
+    try {
+      const response = await orderService.getOrderById(orderId)
+      if (response.success && response.order) {
+        setOrder(response.order)
+      }
+    } catch {
+      Alert.alert('Lỗi', 'Không thể làm mới')
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  const disputeEligibility = useMemo(() => computeDisputeEligibility(order), [order])
 
   const openCancelModal = () => {
     setCancelReason('')
@@ -192,7 +454,7 @@ export default function OrderDetailScreen() {
     }).format(price)
   }
 
-  const formatDate = (dateString: string) => {
+  const formatDateTime = (dateString: string) => {
     const date = new Date(dateString)
     return date.toLocaleString('vi-VN', {
       day: '2-digit',
@@ -225,9 +487,7 @@ export default function OrderDetailScreen() {
   const canPay = order.status === OrderStatus.PendingPayment
   const canConfirmReceive = order.status === OrderStatus.Delivered
   const canReorder = REORDERABLE_STATUSES.has(order.status)
-  // Chỉ cho khiếu nại khi đơn đã giao hoặc hoàn thành
-  const canDispute =
-    order.status === OrderStatus.Delivered || order.status === OrderStatus.Completed
+  const { canDisputePostReceipt, canDisputeNotReceived } = disputeEligibility
   const canReview =
     order.status === OrderStatus.Completed &&
     order.items.some((i) => i.hasReviewedByUser !== true)
@@ -254,10 +514,27 @@ export default function OrderDetailScreen() {
           <Ionicons name="arrow-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Chi tiết đơn hàng</Text>
-        <View style={styles.placeholder} />
+        <TouchableOpacity
+          onPress={onRefresh}
+          style={styles.headerRefresh}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          disabled={refreshing}
+        >
+          {refreshing ? (
+            <ActivityIndicator size="small" color={COLORS.primary} />
+          ) : (
+            <Ionicons name="refresh" size={22} color={COLORS.primary} />
+          )}
+        </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
+        }
+      >
         <View style={styles.statusCard}>
           <View style={styles.statusHeader}>
             <Text style={styles.orderCode}>{order.orderCode}</Text>
@@ -265,7 +542,18 @@ export default function OrderDetailScreen() {
               <Text style={[styles.statusText, { color: statusColor }]}>{order.statusName}</Text>
             </View>
           </View>
-          <Text style={styles.orderDate}>Đặt lúc: {formatDate(order.createdAt)}</Text>
+          <Text style={styles.orderDate}>Đặt lúc: {formatDateTime(order.createdAt)}</Text>
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="git-network-outline" size={20} color={COLORS.primary} />
+            <Text style={styles.sectionTitle}>Trạng thái xử lý</Text>
+          </View>
+          <OrderStatusTimeline
+            currentStatus={order.status}
+            statusTimeline={order.statusTimeline}
+          />
         </View>
 
         {/* Shop section */}
@@ -328,13 +616,63 @@ export default function OrderDetailScreen() {
           ))}
         </View>
 
-        {/* Address */}
+        {/* Thông tin giao hàng (khớp web) */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Ionicons name="location" size={20} color={COLORS.primary} />
-            <Text style={styles.sectionTitle}>Địa chỉ giao hàng</Text>
+            <Text style={styles.sectionTitle}>Thông tin giao hàng</Text>
           </View>
-          <Text style={styles.addressText}>{order.shippingAddress || '—'}</Text>
+          <Text style={styles.shipName}>
+            {order.shipFullName?.trim() || 'Không có thông tin người nhận'}
+          </Text>
+          {order.shipPhone ? (
+            <Text style={styles.shipPhone} selectable>
+              {order.shipPhone}
+            </Text>
+          ) : (
+            <Text style={styles.shipPhoneMuted}>Chưa có số điện thoại</Text>
+          )}
+          <Text style={styles.shipAddress}>
+            {order.shipAddress?.trim() || order.shippingAddress || 'Chưa có địa chỉ giao hàng'}
+          </Text>
+
+          {(order.actualDeliveryDate || order.estimatedDeliveryDate || order.trackingCode) && (
+            <View style={styles.logisticsBox}>
+              {order.actualDeliveryDate ? (
+                <View style={styles.logisticsRow}>
+                  <Ionicons name="checkmark-circle" size={18} color="#059669" />
+                  <Text style={styles.logisticsTextDone}>
+                    Đã giao lúc{' '}
+                    <Text style={styles.logisticsEmphasis}>
+                      {formatDateTime(order.actualDeliveryDate)}
+                    </Text>
+                  </Text>
+                </View>
+              ) : order.estimatedDeliveryDate ? (
+                <View style={styles.logisticsRow}>
+                  <Ionicons name="bus-outline" size={18} color="#1d4ed8" />
+                  <Text style={styles.logisticsTextEta}>
+                    Dự kiến giao{' '}
+                    <Text style={styles.logisticsEmphasis}>
+                      {formatDateShort(order.estimatedDeliveryDate)}
+                    </Text>
+                  </Text>
+                </View>
+              ) : null}
+              {order.trackingCode ? (
+                <View style={styles.logisticsRow}>
+                  <Ionicons name="cube-outline" size={16} color={COLORS.textSecondary} />
+                  <Text style={styles.logisticsTracking}>
+                    Mã vận đơn:{' '}
+                    <Text style={styles.logisticsMono}>{order.trackingCode}</Text>
+                    {order.shippingProvider ? (
+                      <Text style={styles.logisticsProvider}> ({order.shippingProvider})</Text>
+                    ) : null}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          )}
         </View>
 
         {/* Cancel reason */}
@@ -366,8 +704,15 @@ export default function OrderDetailScreen() {
         </View>
       </ScrollView>
 
-      {/* Footer actions */}
-  {(canPay || canCancel || canConfirmReceive || canReview || canReorder || showReviewActions) && (
+      {/* Footer actions — phải gồm khiếu nại: nếu không, đơn Đang giao không có nút nào khác nên cả footer bị ẩn */}
+  {(canPay ||
+    canCancel ||
+    canConfirmReceive ||
+    canReview ||
+    canReorder ||
+    showReviewActions ||
+    canDisputePostReceipt ||
+    canDisputeNotReceived) && (
     <View style={styles.footer}>
       {canPay && (
         <>
@@ -442,10 +787,20 @@ export default function OrderDetailScreen() {
           size="lg"
         />
       )}
-      {canDispute && (
+      {canDisputePostReceipt && (
         <Button
           title="🚨 Khiếu nại đơn hàng"
           onPress={() => router.push(`/profile/disputes?orderId=${order.id}` as any)}
+          variant="outline"
+          fullWidth
+        />
+      )}
+      {canDisputeNotReceived && (
+        <Button
+          title="Báo không nhận được hàng"
+          onPress={() =>
+            router.push(`/profile/disputes?orderId=${order.id}&defaultType=notReceived` as any)
+          }
           variant="outline"
           fullWidth
         />
@@ -580,6 +935,14 @@ const styles = StyleSheet.create({
     fontSize: FONTS.size.lg,
     fontWeight: 'bold',
     color: COLORS.text,
+    flex: 1,
+    textAlign: 'center',
+  },
+  headerRefresh: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   placeholder: {
     width: 40,
@@ -615,6 +978,110 @@ const styles = StyleSheet.create({
   orderDate: {
     fontSize: FONTS.size.sm,
     color: COLORS.textSecondary,
+  },
+  timelineScroll: {
+    marginHorizontal: -SIZES.lg,
+  },
+  timelineScrollContent: {
+    paddingHorizontal: SIZES.lg,
+    paddingBottom: SIZES.xs,
+  },
+  timelineRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  timelineCol: {
+    width: 76,
+    alignItems: 'center',
+  },
+  timelineCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timelineCircleDone: {
+    backgroundColor: '#10b981',
+    borderColor: '#10b981',
+  },
+  timelineCircleCurrent: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  timelineCircleIdle: {
+    backgroundColor: COLORS.background,
+    borderColor: COLORS.border,
+  },
+  timelineCircleNum: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+  },
+  timelineLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 4,
+    minHeight: 28,
+  },
+  timelineLabelDone: {
+    color: '#059669',
+  },
+  timelineLabelCurrent: {
+    color: COLORS.primary,
+  },
+  timelineLabelIdle: {
+    color: COLORS.textSecondary,
+    opacity: 0.6,
+  },
+  timelineTime: {
+    fontSize: 9,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  timelineHLine: {
+    width: 20,
+    height: 2,
+    marginTop: 15,
+    borderRadius: 1,
+  },
+  timelineHLineDone: {
+    backgroundColor: '#6ee7b7',
+  },
+  timelineHLineIdle: {
+    backgroundColor: COLORS.border,
+  },
+  timelineTerminal: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: SIZES.md,
+  },
+  timelineTerminalRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+  },
+  timelineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  timelineTerminalTitle: {
+    fontSize: FONTS.size.sm,
+    fontWeight: '700',
+  },
+  timelineTerminalSub: {
+    fontSize: FONTS.size.xs,
+    opacity: 0.85,
+  },
+  timelineTerminalTime: {
+    fontSize: FONTS.size.xs,
+    marginTop: 4,
+    opacity: 0.9,
   },
   section: {
     backgroundColor: COLORS.card,
@@ -723,6 +1190,70 @@ const styles = StyleSheet.create({
     fontSize: FONTS.size.sm,
     color: COLORS.text,
     lineHeight: 20,
+  },
+  shipName: {
+    fontSize: FONTS.size.md,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  shipPhone: {
+    fontSize: FONTS.size.sm,
+    color: COLORS.textSecondary,
+    marginTop: 4,
+  },
+  shipPhoneMuted: {
+    fontSize: FONTS.size.sm,
+    color: COLORS.textSecondary,
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
+  shipAddress: {
+    fontSize: FONTS.size.sm,
+    color: COLORS.textSecondary,
+    lineHeight: 20,
+    marginTop: 6,
+  },
+  logisticsBox: {
+    marginTop: SIZES.md,
+    padding: SIZES.md,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    backgroundColor: 'rgba(219, 234, 254, 0.45)',
+    gap: 8,
+  },
+  logisticsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  logisticsTextDone: {
+    fontSize: FONTS.size.sm,
+    color: '#047857',
+    flex: 1,
+  },
+  logisticsTextEta: {
+    fontSize: FONTS.size.sm,
+    color: '#1d4ed8',
+    flex: 1,
+  },
+  logisticsEmphasis: {
+    fontWeight: '700',
+  },
+  logisticsTracking: {
+    fontSize: FONTS.size.xs,
+    color: COLORS.textSecondary,
+    flex: 1,
+  },
+  logisticsMono: {
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }) as string,
+    fontSize: FONTS.size.xs,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  logisticsProvider: {
+    fontSize: FONTS.size.xs,
+    color: COLORS.textSecondary,
   },
   summaryRow: {
     flexDirection: 'row',

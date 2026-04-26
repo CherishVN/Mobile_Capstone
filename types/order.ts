@@ -58,6 +58,16 @@ export interface OrderItem {
   hasReviewedByUser?: boolean
 }
 
+/** Bước timeline — khớp BE `OrderStatusStepDto` / web `StatusTimeline` */
+export interface OrderStatusStep {
+  code: string
+  displayName: string
+  value: number
+  /** completed | current | upcoming (hoặc tương đương từ API) */
+  state: string
+  reachedAt?: string | null
+}
+
 export interface Order {
   id: string
   orderCode: string
@@ -70,9 +80,19 @@ export interface Order {
   shippingFee: number
   total: number
   items: OrderItem[]
+  /** Gộp dòng — tương thích code cũ */
   shippingAddress: string
   createdAt: string
   updatedAt?: string
   cancelReason?: string | null
   paymentProvider?: string | null
+  /** Chi tiết — GET /api/orders/:id */
+  shipFullName?: string | null
+  shipPhone?: string | null
+  shipAddress?: string | null
+  estimatedDeliveryDate?: string | null
+  actualDeliveryDate?: string | null
+  trackingCode?: string | null
+  shippingProvider?: string | null
+  statusTimeline?: OrderStatusStep[] | null
 }

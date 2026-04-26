@@ -102,6 +102,8 @@ export type CreateDisputeRequest = {
   reason: string
   requestedAmount: number
   evidenceUrls?: string[]
+  /** Bắt buộc — khớp BE / FE: ít nhất một dòng hàng. */
+  items: { orderItemId: string; quantity: number }[]
 }
 
 // Các trạng thái customer được phép hủy

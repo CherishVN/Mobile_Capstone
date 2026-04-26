@@ -20,6 +20,13 @@ export interface ShopPublicDetailResponse {
   shop?: ShopPublicDto
 }
 
+/** GET /api/shops/{shopId}/categories */
+export interface ShopCategoryDto {
+  id: number
+  name: string
+  productCount: number
+}
+
 /** View model thống nhất cho màn Shop (map từ ShopPublicDto) */
 export interface Shop {
   id: string

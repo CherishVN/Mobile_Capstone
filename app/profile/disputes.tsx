@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -30,6 +31,7 @@ import {
   CANCELLABLE_DISPUTE_STATUSES,
   type CustomerDispute,
 } from '@/types/dispute'
+import type { Order } from '@/types/order'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
 
 const PAGE_SIZE = 10
@@ -46,15 +48,15 @@ const STATUS_FILTERS = [
   { value: DisputeStatus.Cancelled, label: 'Đã hủy' },
 ]
 
-const TYPE_OPTIONS = [
+/** Khớp FE purchase/[id] — «Không nhận được» chỉ từ nút riêng, không nằm trong danh sách chung. */
+const DISPUTE_TYPE_OPTIONS = [
   { value: DisputeType.Refund, label: 'Hoàn tiền' },
   { value: DisputeType.Return, label: 'Trả hàng' },
   { value: DisputeType.Damaged, label: 'Hàng hư hỏng' },
-  { value: DisputeType.NotReceived, label: 'Không nhận được' },
   { value: DisputeType.WrongItem, label: 'Sai hàng' },
   { value: DisputeType.QualityIssue, label: 'Chất lượng không đảm bảo' },
   { value: DisputeType.Other, label: 'Khác' },
-]
+] as const
 
 function formatPrice(amount: number) {
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount)
@@ -171,7 +173,7 @@ const epStyles = StyleSheet.create({
 // --- Main Screen ---
 export default function DisputesScreen() {
   const router = useRouter()
-  const params = useLocalSearchParams<{ orderId?: string }>()
+  const params = useLocalSearchParams<{ orderId?: string; defaultType?: string }>()
   const [disputes, setDisputes] = useState<CustomerDispute[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -199,32 +201,70 @@ export default function DisputesScreen() {
   const [evidenceUrls, setEvidenceUrls] = useState<string[]>([])
   const [typePickerVisible, setTypePickerVisible] = useState(false)
   const [hintOrderTotal, setHintOrderTotal] = useState<number | null>(null)
+  /** true = mở từ «Báo không nhận được hàng» — không cho đổi sang Hoàn tiền / Trả hàng /... */
+  const [lockTypeToNotReceived, setLockTypeToNotReceived] = useState(false)
+  /** Đơn đã load — chọn SL khiếu nại từng dòng (khớp FE). */
+  const [orderSnapshot, setOrderSnapshot] = useState<Order | null>(null)
+  const [disputeLineQty, setDisputeLineQty] = useState<Record<string, number>>({})
 
-  // Auto-open create form khi navigate từ trang đơn hàng
+  const disputeSelectedGoodsValue = useMemo(() => {
+    if (!orderSnapshot) return 0
+    let sum = 0
+    for (const it of orderSnapshot.items) {
+      const q = Math.min(
+        Math.max(0, Math.floor(disputeLineQty[it.id] ?? 0)),
+        it.quantity,
+      )
+      sum += it.unitPrice * q
+    }
+    return sum
+  }, [orderSnapshot, disputeLineQty])
+
+  // Auto-open create form khi navigate từ trang đơn hàng (defaultType=notReceived → loại khiếu nại tương ứng)
   useEffect(() => {
     if (params.orderId) {
-      setForm(f => ({ ...f, orderId: params.orderId! }))
+      const fromNotReceived = params.defaultType === 'notReceived'
+      setForm(f => ({
+        ...f,
+        orderId: params.orderId!,
+        ...(fromNotReceived ? { type: DisputeType.NotReceived } : {}),
+      }))
       setEvidenceUrls([])
+      setLockTypeToNotReceived(fromNotReceived)
       setCreateVisible(true)
     }
-  }, [params.orderId])
+  }, [params.orderId, params.defaultType])
 
   useEffect(() => {
     if (!createVisible) {
       setHintOrderTotal(null)
+      setOrderSnapshot(null)
+      setDisputeLineQty({})
       return
     }
     const id = form.orderId.trim()
     if (!id) {
       setHintOrderTotal(null)
+      setOrderSnapshot(null)
+      setDisputeLineQty({})
       return
     }
     let alive = true
     const t = setTimeout(() => {
       void orderService.getOrderById(id).then(res => {
         if (!alive) return
-        if (res.success && res.order) setHintOrderTotal(res.order.total)
-        else setHintOrderTotal(null)
+        if (res.success && res.order) {
+          const o = res.order
+          setHintOrderTotal(o.total)
+          setOrderSnapshot(o)
+          const init: Record<string, number> = {}
+          for (const it of o.items) init[it.id] = 0
+          setDisputeLineQty(init)
+        } else {
+          setHintOrderTotal(null)
+          setOrderSnapshot(null)
+          setDisputeLineQty({})
+        }
       })
     }, 400)
     return () => {
@@ -277,6 +317,23 @@ export default function DisputesScreen() {
   const resetForm = () => {
     setForm({ orderId: '', type: DisputeType.Refund, title: '', reason: '', requestedAmount: '' })
     setEvidenceUrls([])
+    setLockTypeToNotReceived(false)
+    setOrderSnapshot(null)
+    setDisputeLineQty({})
+  }
+
+  const closeCreateModal = () => {
+    setCreateVisible(false)
+    setTypePickerVisible(false)
+    setLockTypeToNotReceived(false)
+  }
+
+  const applyDisputeAmountFromSelection = () => {
+    if (disputeSelectedGoodsValue <= 0) {
+      Alert.alert('Lỗi', 'Chọn ít nhất một sản phẩm với số lượng khiếu nại trước.')
+      return
+    }
+    setForm(f => ({ ...f, requestedAmount: String(Math.round(disputeSelectedGoodsValue)) }))
   }
 
   const handleCreate = async () => {
@@ -292,7 +349,29 @@ export default function DisputesScreen() {
       Alert.alert('Lỗi', ordRes.message ?? 'Không tìm thấy đơn hàng')
       return
     }
-    const maxTotal = ordRes.order.total
+    const order = ordRes.order
+    const items = order.items
+      .map((it) => ({
+        orderItemId: it.id,
+        quantity: Math.min(
+          Math.max(0, Math.floor(disputeLineQty[it.id] ?? 0)),
+          it.quantity,
+        ),
+      }))
+      .filter((x) => x.quantity > 0)
+
+    if (items.length === 0) {
+      Alert.alert('Lỗi', 'Vui lòng chọn ít nhất một sản phẩm và nhập số lượng khiếu nại.')
+      return
+    }
+
+    let maxSelected = 0
+    for (const line of items) {
+      const it = order.items.find((i) => i.id === line.orderItemId)
+      if (it) maxSelected += it.unitPrice * line.quantity
+    }
+
+    const maxTotal = order.total
     const rawAmt = form.requestedAmount.trim()
     const reqAmt = rawAmt === '' ? 0 : Number(rawAmt)
     if (Number.isNaN(reqAmt) || reqAmt < 0) {
@@ -303,7 +382,15 @@ export default function DisputesScreen() {
       Alert.alert('Lỗi', `Số tiền yêu cầu không được vượt quá tổng đơn (${formatPrice(maxTotal)})`)
       return
     }
-    if (form.type === DisputeType.Refund && reqAmt <= 0) {
+    if (reqAmt > maxSelected + 0.01) {
+      Alert.alert(
+        'Lỗi',
+        `Số tiền yêu cầu không được vượt quá giá trị các sản phẩm đã chọn (${formatPrice(maxSelected)}).`,
+      )
+      return
+    }
+    const submitType = lockTypeToNotReceived ? DisputeType.NotReceived : form.type
+    if (submitType === DisputeType.Refund && reqAmt <= 0) {
       Alert.alert('Lỗi', 'Với loại hoàn tiền, vui lòng nhập số tiền lớn hơn 0')
       return
     }
@@ -312,15 +399,16 @@ export default function DisputesScreen() {
     try {
       const res = await disputeService.createDispute({
         orderId: form.orderId.trim(),
-        type: form.type,
+        type: submitType,
         title: form.title.trim(),
         reason: form.reason.trim(),
         requestedAmount: reqAmt,
+        items,
         evidenceUrls: evidenceUrls.length > 0 ? evidenceUrls : undefined,
       })
       if (res.success) {
         Alert.alert('Thành công', 'Đã tạo khiếu nại')
-        setCreateVisible(false)
+        closeCreateModal()
         resetForm()
         load(1)
       } else {
@@ -478,7 +566,10 @@ export default function DisputesScreen() {
         visible={createVisible}
         animationType="slide"
         transparent
-        onRequestClose={() => setCreateVisible(false)}
+        onRequestClose={() => {
+          closeCreateModal()
+          resetForm()
+        }}
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -486,21 +577,25 @@ export default function DisputesScreen() {
         >
           <View style={styles.modalBox}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Tạo khiếu nại mới</Text>
-              <TouchableOpacity onPress={() => setCreateVisible(false)}>
+              <Text style={styles.modalTitle}>
+                Tạo khiếu nại mới{orderSnapshot?.orderCode ? ` #${orderSnapshot.orderCode}` : ''}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  closeCreateModal()
+                  resetForm()
+                }}
+              >
                 <Ionicons name="close" size={24} color={COLORS.text} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              {/* Notice */}
-              <View style={styles.notice}>
-                <Ionicons name="information-circle-outline" size={16} color="#92400e" />
-                <Text style={styles.noticeText}>
-                  Đơn phải ở trạng thái Đã giao / Hoàn thành, trong vòng 7 ngày, và chưa khiếu nại lần nào.
-                </Text>
-              </View>
+            <Text style={styles.disputeFormDesc}>
+              Mỗi đơn hàng chỉ được khiếu nại một lần. Chọn đúng sản phẩm và số lượng bị ảnh hưởng — bằng chứng rõ
+              ràng.
+            </Text>
 
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               {/* Order ID */}
               <View style={styles.field}>
                 <Text style={styles.label}>Mã đơn hàng <Text style={styles.required}>*</Text></Text>
@@ -515,16 +610,72 @@ export default function DisputesScreen() {
                 />
               </View>
 
-              {/* Type picker */}
+              {orderSnapshot && orderSnapshot.items.length > 0 ? (
+                <View style={styles.field}>
+                  <Text style={styles.label}>Sản phẩm trong phạm vi khiếu nại <Text style={styles.required}>*</Text></Text>
+                  <Text style={styles.hintSub}>
+                    Nhập số lượng khiếu nại từng món (0 = không chọn). Ví dụ chỉ 1 món hư: nhập 1 ở dòng đó, các món
+                    khác để 0.
+                  </Text>
+                  <View style={styles.lineList}>
+                    {orderSnapshot.items.map(it => (
+                      <View key={it.id} style={styles.lineRow}>
+                        <View style={styles.lineThumb}>
+                          {it.productImage ? (
+                            <Image source={{ uri: it.productImage }} style={styles.lineThumbImg} />
+                          ) : (
+                            <View style={styles.lineThumbPlaceholder}>
+                              <Ionicons name="cube-outline" size={22} color={COLORS.textSecondary} />
+                            </View>
+                          )}
+                        </View>
+                        <View style={styles.lineInfo}>
+                          <Text numberOfLines={2} style={styles.lineName}>
+                            {it.productName}
+                          </Text>
+                          <Text style={styles.lineMeta}>
+                            {formatPrice(it.unitPrice)} / món · tối đa {it.quantity}
+                          </Text>
+                        </View>
+                        <TextInput
+                          style={styles.qtyInput}
+                          keyboardType="number-pad"
+                          value={String(disputeLineQty[it.id] ?? 0)}
+                          onChangeText={t => {
+                            const raw = parseInt(t.replace(/\D/g, ''), 10)
+                            const v = Number.isNaN(raw) ? 0 : Math.min(it.quantity, Math.max(0, raw))
+                            setDisputeLineQty(prev => ({ ...prev, [it.id]: v }))
+                          }}
+                        />
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+
+              {/* Type picker (khóa nếu mở từ «Báo không nhận được hàng») */}
               <View style={styles.field}>
                 <Text style={styles.label}>Loại khiếu nại <Text style={styles.required}>*</Text></Text>
-                <TouchableOpacity
-                  style={styles.selector}
-                  onPress={() => setTypePickerVisible(true)}
-                >
-                  <Text style={styles.selectorText}>{DisputeTypeLabels[form.type]}</Text>
-                  <Ionicons name="chevron-down" size={18} color={COLORS.textSecondary} />
-                </TouchableOpacity>
+                {lockTypeToNotReceived ? (
+                  <View style={[styles.selector, styles.selectorLocked]}>
+                    <Text style={styles.selectorText}>{DisputeTypeLabels[DisputeType.NotReceived]}</Text>
+                    <Ionicons name="lock-closed" size={16} color={COLORS.textSecondary} />
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.selector}
+                    onPress={() => setTypePickerVisible(true)}
+                  >
+                    <Text style={styles.selectorText}>{DisputeTypeLabels[form.type]}</Text>
+                    <Ionicons name="chevron-down" size={18} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
+                )}
+                {lockTypeToNotReceived ? (
+                  <Text style={styles.lockedTypeHint}>
+                    Bạn mở từ «Báo không nhận được hàng» trên đơn — loại này đã cố định, không đổi sang loại
+                    khác.
+                  </Text>
+                ) : null}
               </View>
 
               {/* Title */}
@@ -545,7 +696,7 @@ export default function DisputesScreen() {
                 <Text style={styles.label}>Lý do chi tiết <Text style={styles.required}>*</Text></Text>
                 <TextInput
                   style={[styles.input, styles.textarea]}
-                  placeholder="Mô tả rõ vấn đề gặp phải (tối thiểu 20 ký tự)"
+                  placeholder="Mô tả rõ tình trạng sản phẩm, thời điểm phát hiện vấn đề... (tối thiểu 20 ký tự)"
                   placeholderTextColor={COLORS.placeholder}
                   value={form.reason}
                   onChangeText={v => setForm(f => ({ ...f, reason: v }))}
@@ -561,13 +712,30 @@ export default function DisputesScreen() {
 
               {/* Evidence */}
               <View style={styles.field}>
-                <Text style={styles.label}>Bằng chứng <Text style={styles.optional}>(ảnh/video, tối đa 10)</Text></Text>
+                <Text style={styles.label}>
+                  Bằng chứng <Text style={styles.optional}>(ảnh / video, tối đa 10)</Text>
+                </Text>
                 <EvidencePicker urls={evidenceUrls} onChange={setEvidenceUrls} disabled={creating} />
               </View>
 
               {/* Amount */}
               <View style={styles.field}>
-                <Text style={styles.label}>Số tiền yêu cầu hoàn (₫) <Text style={styles.optional}>(để trống nếu chỉ đổi/trả)</Text></Text>
+                <View style={styles.amountLabelRow}>
+                  <Text style={styles.label}>
+                    Số tiền yêu cầu hoàn (₫) <Text style={styles.optional}>(bỏ trống nếu không đòi hoàn)</Text>
+                  </Text>
+                  {disputeSelectedGoodsValue > 0 ? (
+                    <TouchableOpacity
+                      style={styles.fillAmountBtn}
+                      onPress={applyDisputeAmountFromSelection}
+                      disabled={creating}
+                    >
+                      <Text style={styles.fillAmountBtnText}>
+                        Điền theo phần hàng ({formatPrice(disputeSelectedGoodsValue)})
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
                 <TextInput
                   style={styles.input}
                   placeholder="0"
@@ -576,9 +744,16 @@ export default function DisputesScreen() {
                   onChangeText={v => setForm(f => ({ ...f, requestedAmount: v }))}
                   keyboardType="numeric"
                 />
+                <Text style={styles.charCount}>
+                  Giá trị phần hàng đã chọn:{' '}
+                  {disputeSelectedGoodsValue > 0 ? formatPrice(disputeSelectedGoodsValue) : '—'}
+                  {disputeSelectedGoodsValue > 0
+                    ? ' (ví dụ chỉ 1 món hư → tối đa yêu cầu hoàn bằng giá món đó).'
+                    : ''}
+                </Text>
                 {hintOrderTotal != null && (
                   <Text style={styles.charCount}>
-                    Tối đa {formatPrice(hintOrderTotal)} (tổng đơn). Loại Hoàn tiền: bắt buộc nhập &gt; 0.
+                    Trần tổng đơn: {formatPrice(hintOrderTotal)}. Loại Hoàn tiền: bắt buộc nhập &gt; 0.
                   </Text>
                 )}
               </View>
@@ -586,7 +761,10 @@ export default function DisputesScreen() {
               <View style={styles.modalActions}>
                 <TouchableOpacity
                   style={styles.btnOutline}
-                  onPress={() => setCreateVisible(false)}
+                  onPress={() => {
+                    closeCreateModal()
+                    resetForm()
+                  }}
                   disabled={creating}
                 >
                   <Text style={styles.btnOutlineText}>Hủy</Text>
@@ -621,11 +799,28 @@ export default function DisputesScreen() {
         >
           <View style={styles.pickerBox}>
             <Text style={styles.pickerTitle}>Chọn loại khiếu nại</Text>
-            {TYPE_OPTIONS.map(opt => (
+            {DISPUTE_TYPE_OPTIONS.map(opt => (
               <TouchableOpacity
                 key={opt.value}
                 style={[styles.pickerItem, form.type === opt.value && styles.pickerItemActive]}
-                onPress={() => { setForm(f => ({ ...f, type: opt.value })); setTypePickerVisible(false) }}
+                onPress={() => {
+                  setForm(f => {
+                    const next = { ...f, type: opt.value }
+                    if (opt.value === DisputeType.Refund && orderSnapshot) {
+                      let sum = 0
+                      for (const it of orderSnapshot.items) {
+                        const q = Math.min(
+                          Math.max(0, Math.floor(disputeLineQty[it.id] ?? 0)),
+                          it.quantity,
+                        )
+                        sum += it.unitPrice * q
+                      }
+                      if (sum > 0) next.requestedAmount = String(Math.round(sum))
+                    }
+                    return next
+                  })
+                  setTypePickerVisible(false)
+                }}
               >
                 <Text style={[styles.pickerItemText, form.type === opt.value && styles.pickerItemTextActive]}>
                   {opt.label}
@@ -741,15 +936,67 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card, borderTopLeftRadius: 20, borderTopRightRadius: 20,
     padding: SIZES.lg, maxHeight: '90%',
   },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SIZES.md },
-  modalTitle: { fontSize: FONTS.size.lg, fontWeight: 'bold', color: COLORS.text },
-  notice: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
-    backgroundColor: '#fffbeb', borderWidth: 1, borderColor: '#fde68a',
-    borderRadius: 10, padding: SIZES.md, marginBottom: SIZES.md,
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SIZES.sm },
+  modalTitle: { fontSize: FONTS.size.lg, fontWeight: 'bold', color: COLORS.text, flex: 1, paddingRight: 8 },
+  disputeFormDesc: {
+    fontSize: FONTS.size.xs,
+    color: COLORS.textSecondary,
+    lineHeight: 18,
+    marginBottom: SIZES.md,
+    paddingHorizontal: 2,
   },
-  noticeText: { fontSize: FONTS.size.xs, color: '#92400e', flex: 1, lineHeight: 18 },
   field: { marginBottom: SIZES.md },
+  hintSub: { fontSize: FONTS.size.xs, color: COLORS.textSecondary, marginBottom: 8, lineHeight: 16 },
+  lineList: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    maxHeight: 220,
+    backgroundColor: COLORS.background,
+  },
+  lineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: SIZES.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  lineThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.card,
+  },
+  lineThumbImg: { width: 48, height: 48, resizeMode: 'cover' },
+  lineThumbPlaceholder: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.background,
+  },
+  lineInfo: { flex: 1, minWidth: 0 },
+  lineName: { fontSize: FONTS.size.sm, fontWeight: '500', color: COLORS.text },
+  lineMeta: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
+  qtyInput: {
+    width: 56,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    paddingVertical: 8,
+    textAlign: 'center',
+    fontSize: FONTS.size.sm,
+    color: COLORS.text,
+    backgroundColor: COLORS.card,
+  },
+  amountLabelRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 },
+  fillAmountBtn: { paddingVertical: 4, paddingHorizontal: 8, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8 },
+  fillAmountBtnText: { fontSize: 11, color: COLORS.primary, fontWeight: '600' },
   label: { fontSize: FONTS.size.sm, fontWeight: '500', color: COLORS.text, marginBottom: 6 },
   required: { color: COLORS.error },
   optional: { fontSize: FONTS.size.xs, color: COLORS.textSecondary, fontWeight: '400' },
@@ -763,7 +1010,9 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.border, borderRadius: 10,
     padding: SIZES.md, backgroundColor: COLORS.background,
   },
+  selectorLocked: { opacity: 0.9, borderStyle: 'dashed' as const, borderColor: COLORS.textSecondary + '80' },
   selectorText: { fontSize: FONTS.size.sm, color: COLORS.text },
+  lockedTypeHint: { fontSize: FONTS.size.xs, color: COLORS.textSecondary, marginTop: 6, lineHeight: 16 },
   charCount: { fontSize: FONTS.size.xs, color: COLORS.textSecondary, textAlign: 'right', marginTop: 4 },
   modalActions: { flexDirection: 'row', gap: SIZES.sm, marginTop: SIZES.md, marginBottom: SIZES.sm },
   btnOutline: {
