@@ -27,6 +27,13 @@ export const paymentService = {
       ...clientUrls,
     }),
 
+  createVNPayBatch: (orderIds: string[], clientUrls?: VnPayClientReturnUrls) =>
+    api.post<CreatePaymentResult>('/api/payments/vnpay/create-batch', {
+      orderIds,
+      vnPayReturnUrlOverride: getVnPayReturnUrlOverride(),
+      ...clientUrls,
+    }),
+
   createMoMo: (orderId: string) =>
     api.post<CreatePaymentResult>('/api/payments/momo/create', { orderId }),
 }

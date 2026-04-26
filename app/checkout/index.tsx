@@ -16,7 +16,7 @@ import { cartService } from '@/services/cart-service'
 import { userService } from '@/services/user-service'
 import { orderService } from '@/services/order-service'
 import { paymentService } from '@/services/payment-service'
-import { startVnPayInAppSession } from '@/lib/vnpay-in-app'
+import { startVnPayBatchInAppSession } from '@/lib/vnpay-in-app'
 import { startMoMoInAppSession } from '@/lib/momo-in-app'
 import { productService } from '@/services/product-service'
 import { Cart, CartItem } from '@/types/cart'
@@ -230,7 +230,8 @@ export default function CheckoutScreen() {
       try {
         if (paymentMethod === 'vnpay') {
           await markPendingPaymentOrder(firstOrderId)
-          const vn = await startVnPayInAppSession(firstOrderId)
+          // Gộp TẤT CẢ đơn hàng vào 1 giao dịch VNPay
+          const vn = await startVnPayBatchInAppSession(orderIds)
           if (vn.kind === 'error') {
             Alert.alert('Lỗi', vn.message || `Không thể tạo giao dịch ${label}`)
           } else if (vn.kind === 'opened') {

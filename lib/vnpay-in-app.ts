@@ -88,3 +88,25 @@ export async function startVnPayInAppSession(orderId: string): Promise<VnPayInAp
   router.push('/payment/vnpay-web' as never)
   return { kind: 'opened' }
 }
+
+/**
+ * Mở VNPay cho NHIỀU đơn hàng (multi-shop checkout) — gộp tất cả vào 1 giao dịch.
+ */
+export async function startVnPayBatchInAppSession(orderIds: string[]): Promise<VnPayInAppResult> {
+  if (orderIds.length === 1) {
+    return startVnPayInAppSession(orderIds[0])
+  }
+
+  const { clientReturnSuccessUrl, clientReturnFailureUrl } = getVnPayClientReturnUrls()
+  const payRes = await paymentService.createVNPayBatch(orderIds, {
+    clientReturnSuccessUrl,
+    clientReturnFailureUrl,
+  })
+  if (!payRes.success || !payRes.paymentUrl) {
+    return { kind: 'error', message: payRes.message }
+  }
+
+  pendingVnPayUrl = payRes.paymentUrl
+  router.push('/payment/vnpay-web' as never)
+  return { kind: 'opened' }
+}
