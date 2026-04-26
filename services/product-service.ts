@@ -9,7 +9,8 @@ export const productService = {
     search?: string
     minPrice?: number
     maxPrice?: number
-    sortBy?: 'newest' | 'price_asc' | 'price_desc' | 'rating' | 'best_seller'
+    minRating?: number
+    sortBy?: 'relevance' | 'newest' | 'price_asc' | 'price_desc' | 'rating' | 'best_seller'
   } = {}) => {
     const queryParams = new URLSearchParams()
     if (params.page) queryParams.set('page', String(params.page))
@@ -18,6 +19,7 @@ export const productService = {
     if (params.search) queryParams.set('search', params.search)
     if (params.minPrice !== undefined) queryParams.set('minPrice', String(params.minPrice))
     if (params.maxPrice !== undefined) queryParams.set('maxPrice', String(params.maxPrice))
+    if (params.minRating !== undefined) queryParams.set('minRating', String(params.minRating))
     if (params.sortBy) queryParams.set('sortBy', params.sortBy)
 
     const query = queryParams.toString()

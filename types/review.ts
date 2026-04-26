@@ -7,6 +7,24 @@ export interface ProductReview {
   comment?: string | null
   createdAt: string
   imageUrls: string[]
+  /** Phản hồi từ người bán (khớp BE ProductReviewDto.SellerReply) */
+  sellerReply?: string | null
+}
+
+export interface ProductReviewStatsDto {
+  total: number
+  count5: number
+  count4: number
+  count3: number
+  count2: number
+  count1: number
+  withComment: number
+  withImage: number
+}
+
+export interface ProductReviewStatsResponse {
+  success: boolean
+  data: ProductReviewStatsDto
 }
 
 export interface ProductReviewListResponse {

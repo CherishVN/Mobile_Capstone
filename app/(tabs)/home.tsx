@@ -152,7 +152,7 @@ export default function HomeScreen() {
   const renderCategoryItem = ({ item }: { item: Category }) => (
     <TouchableOpacity
       style={styles.webStyleCategoryCard}
-      onPress={() => router.push(`/search?categoryId=${item.id}`)}
+      onPress={() => router.push(`/products?categoryId=${item.id}` as Href)}
       activeOpacity={0.7}
     >
       <View style={styles.webStyleCategoryImgContainer}>
@@ -274,7 +274,7 @@ export default function HomeScreen() {
               <View style={styles.sectionTitleIndicator} />
               <Text style={styles.sectionTitleMain}>Danh mục nổi bật</Text>
             </View>
-            <TouchableOpacity onPress={() => router.push('/search')}>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/categories' as Href)}>
               <Text style={styles.seeAllText}>Xem tất cả</Text>
             </TouchableOpacity>
           </View>

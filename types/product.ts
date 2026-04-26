@@ -30,6 +30,9 @@ export interface ProductDetail extends Product {
   reviewCount: number
   variants: ProductVariant[]
   totalStock: number
+  /** Khớp BE storefront detail */
+  tags?: string[]
+  materials?: string[]
 }
 
 export interface ProductsResponse {

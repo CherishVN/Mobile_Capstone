@@ -12,16 +12,15 @@ import {
   ActivityIndicator,
   Modal,
 } from 'react-native'
-import { useRouter, useLocalSearchParams } from 'expo-router'
+import { useRouter, useLocalSearchParams, type Href } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { Ionicons } from '@expo/vector-icons'
 import { productService } from '@/services/product-service'
 import { cartService } from '@/services/cart-service'
 import { favoriteService } from '@/services/favorite-service'
-import { reviewService } from '@/services/review-service'
 import { shopService } from '@/services/shop-service'
 import { ProductDetail, ProductVariant, Product } from '@/types/product'
-import { ProductReview } from '@/types/review'
+import { StorefrontProductReviews } from '@/components/storefront-product-reviews'
 import { ShopPublicDto } from '@/types/shop'
 import Loading from '@/components/Loading'
 import { COLORS, SIZES, FONTS } from '@/constants/theme'
@@ -56,7 +55,6 @@ export default function ProductDetailScreen() {
   const [activeImageIndex, setActiveImageIndex] = useState(0)
   const [favorited, setFavorited] = useState(false)
   const [favBusy, setFavBusy] = useState(false)
-  const [reviews, setReviews] = useState<ProductReview[]>([])
   
   const [showVariantModal, setShowVariantModal] = useState(false)
   const [modalAction, setModalAction] = useState<'cart' | 'buy'>('cart')
@@ -75,8 +73,24 @@ export default function ProductDetailScreen() {
       const prodRes = await productService.getProductBySlug(slug)
       let p: ProductDetail | null = null
       if (prodRes.success && prodRes.product) {
-        setProduct(prodRes.product)
-        p = prodRes.product
+        const raw = prodRes.product as ProductDetail & {
+          Tags?: string[]
+          Materials?: string[]
+        }
+        p = {
+          ...raw,
+          tags: Array.isArray(raw.tags)
+            ? raw.tags
+            : Array.isArray(raw.Tags)
+              ? raw.Tags
+              : [],
+          materials: Array.isArray(raw.materials)
+            ? raw.materials
+            : Array.isArray(raw.Materials)
+              ? raw.Materials
+              : [],
+        }
+        setProduct(p)
         if (p.variants.length > 0) {
           setSelectedVariant(p.variants[0])
         }
@@ -84,12 +98,6 @@ export default function ProductDetailScreen() {
 
       // Nếu có product -> Lấy Shop, related, review
       if (p) {
-        // Reviews
-        reviewService
-          .getProductReviews(p.id, { pageSize: 5, sortBy: 'newest' })
-          .then((r) => r.success && setReviews(r.reviews || []))
-          .catch(() => {})
-
         // Favorite
         if (isAuthenticated) {
           favoriteService.check(p.id)
@@ -97,18 +105,36 @@ export default function ProductDetailScreen() {
             .catch(() => {})
         }
 
-        // Shop Details & Related Products
+        // Shop + sản phẩm liên quan (cùng danh mục trước, giống FE; không có danh mục → cùng shop)
+        let shopForRelated: { id: string } | null = null
         try {
           const shopRes = await shopService.getShopBySlug(p.shopSlug)
           if (shopRes.success && shopRes.shop) {
             setShop(shopRes.shop)
-            const relRes = await shopService.getShopProducts(shopRes.shop.id, { pageSize: 8 })
-            if (relRes.success && relRes.products) {
-              setRelatedProducts(relRes.products.filter(rp => rp.id !== p?.id))
-            }
+            shopForRelated = shopRes.shop
           }
         } catch (e) {
           console.warn('Cannot load shop details', e)
+        }
+
+        try {
+          if (p.categoryId != null) {
+            const relRes = await productService.getProducts({
+              categoryId: p.categoryId,
+              pageSize: 6,
+              sortBy: 'newest',
+            })
+            if (relRes.products?.length) {
+              setRelatedProducts(relRes.products.filter((rp) => rp.id !== p.id && rp.slug !== slug))
+            }
+          } else if (shopForRelated) {
+            const relRes = await shopService.getShopProducts(shopForRelated.id, { pageSize: 8 })
+            if (relRes.success && relRes.products) {
+              setRelatedProducts(relRes.products.filter((rp) => rp.id !== p.id))
+            }
+          }
+        } catch (e) {
+          console.warn('Cannot load related products', e)
         }
       }
     } catch (error: any) {
@@ -202,6 +228,11 @@ export default function ProductDetailScreen() {
     return new Intl.NumberFormat('vi-VN').format(price) + 'đ'
   }
 
+  const activeVariants = useMemo(
+    () => (product?.variants ?? []).filter((v) => v.isActive),
+    [product?.variants]
+  )
+
   if (loading) return <Loading />
   
   if (!product) {
@@ -265,73 +296,173 @@ export default function ProductDetailScreen() {
           </View>
         </View>
 
-        {/* === 2. INFO & PRICE === */}
+        {/* === 2. BREADCRUMB + TITLE (khớp FE) === */}
         <View style={styles.infoSection}>
-          <View style={styles.priceRow}>
-            <View style={{flexDirection: 'row', alignItems: 'baseline', gap: 4}}>
-               <Text style={styles.mainPrice}>{formatPrice(currentPrice)}</Text>
-            </View>
-            <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
-               <Text style={styles.soldCount}>Đã bán {product.soldCount}</Text>
-               <TouchableOpacity onPress={handleToggleFavorite} disabled={favBusy}>
-                 <Ionicons name={favorited ? 'heart' : 'heart-outline'} size={24} color={favorited ? SHOPEE_PRICE : COLORS.textSecondary} />
-               </TouchableOpacity>
-            </View>
+          <View style={styles.breadcrumbRow}>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/home' as Href)}>
+              <Text style={styles.breadLink}>Trang chủ</Text>
+            </TouchableOpacity>
+            <Ionicons name="chevron-forward" size={12} color="#9ca3af" />
+            {product.categoryName && product.categoryId != null ? (
+              <>
+                <TouchableOpacity
+                  onPress={() =>
+                    router.push(`/products?categoryId=${product.categoryId}` as Href)
+                  }
+                >
+                  <Text style={styles.breadLink} numberOfLines={1}>
+                    {product.categoryName}
+                  </Text>
+                </TouchableOpacity>
+                <Ionicons name="chevron-forward" size={12} color="#9ca3af" />
+              </>
+            ) : null}
+            <Text style={styles.breadCurrent} numberOfLines={1}>
+              {product.name}
+            </Text>
           </View>
 
-          <Text style={styles.productTitle}>{product.name}</Text>
+          <View style={styles.titleFavRow}>
+            <Text style={styles.productTitleFe}>{product.name}</Text>
+            <TouchableOpacity onPress={handleToggleFavorite} disabled={favBusy}>
+              <Ionicons
+                name={favorited ? 'heart' : 'heart-outline'}
+                size={26}
+                color={favorited ? SHOPEE_PRICE : COLORS.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.ratingMetaRow}>
+            <View style={styles.starLine}>
+              {[1, 2, 3, 4, 5].map((i) => (
+                <Ionicons
+                  key={i}
+                  name="star"
+                  size={16}
+                  color={i <= Math.floor(product.averageRating) ? '#f59e0b' : '#e5e7eb'}
+                />
+              ))}
+            </View>
+            {product.reviewCount > 0 && (
+              <>
+                <Text style={styles.metaSep}>|</Text>
+                <Text style={styles.metaText}>{product.reviewCount} đánh giá</Text>
+              </>
+            )}
+            {product.soldCount > 0 && (
+              <>
+                <Text style={styles.metaSep}>|</Text>
+                <Text style={styles.metaText}>Đã bán {product.soldCount}</Text>
+              </>
+            )}
+          </View>
+
+          <View style={styles.dividerLight} />
+
+          <Text style={styles.mainPriceFe}>{formatPrice(currentPrice)}</Text>
         </View>
 
-        {/* === 3. SELECT VARIANT INLINE === */}
-        {product.variants.length > 0 && (
-          <TouchableOpacity 
-             style={styles.inlineVariantRow}
-             onPress={() => {
-               setModalAction('cart')
-               setShowVariantModal(true)
-             }}
-             activeOpacity={0.7}
-          >
-             <Text style={styles.inlineVariantLabel}>Chọn loại hàng</Text>
-             <View style={styles.inlineVariantRight}>
-                <Text style={styles.inlineVariantValue}>
-                  {selectedVariant ? selectedVariant.variantName : 'Chọn biến thể'}
-                </Text>
-                <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
-             </View>
-          </TouchableOpacity>
+        {/* Từ khóa + chất liệu — đặt sớm, khớp nội dung FE (không bị lệch do scroll) */}
+        {((product.tags && product.tags.length > 0) ||
+          (product.materials && product.materials.length > 0)) && (
+          <View style={styles.cardSection}>
+            {product.tags && product.tags.length > 0 && (
+              <View style={styles.kwBlock}>
+                <Text style={styles.kwLabel}>Từ khóa:</Text>
+                <View style={styles.chipWrap}>
+                  {product.tags.map((t) => (
+                    <View key={t} style={styles.chipOrange}>
+                      <Text style={styles.chipOrangeT}>#{t}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+            {product.materials && product.materials.length > 0 && (
+              <View style={[styles.kwBlock, { marginTop: 10 }]}>
+                <Text style={styles.kwLabel}>Chất liệu:</Text>
+                <View style={styles.chipWrap}>
+                  {product.materials.map((m) => (
+                    <View key={m} style={styles.chipGray}>
+                      <Text style={styles.chipGrayT}>{m}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+          </View>
         )}
 
-        {/* === 4. REVIEWS === */}
+        {/* Phân loại (chip) + mở modal — gần FE */}
+        {activeVariants.length > 0 && (
+          <View style={styles.cardSection}>
+            <Text style={styles.blockLabelFe}>Phân loại</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.variantChipsRow}
+            >
+              {activeVariants.map((v) => {
+                const sel = selectedVariant?.id === v.id
+                return (
+                  <TouchableOpacity
+                    key={v.id}
+                    style={[styles.variantChip, sel && styles.variantChipOn]}
+                    onPress={() => setSelectedVariant(v)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.variantChipT, sel && styles.variantChipTOn]}>
+                      {v.variantName}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </ScrollView>
+            <TouchableOpacity
+              style={[styles.inlineVariantRow, { backgroundColor: 'transparent', marginBottom: 0, marginTop: 6 }]}
+              onPress={() => {
+                setModalAction('cart')
+                setShowVariantModal(true)
+              }}
+            >
+              <Text style={styles.inlineVariantLabel}>Mở đầy đủ tùy chọn</Text>
+              <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Số lượng + tồn (khớp FE) */}
         <View style={styles.cardSection}>
-           <View style={styles.reviewHeader}>
-             <View style={{flexDirection: 'row', alignItems: 'center'}}>
-               <Text style={styles.reviewScore}>{product.averageRating.toFixed(1)}</Text>
-               <Ionicons name="star" size={14} color="#ffc107" style={{marginHorizontal: 4}} />
-               <Text style={styles.reviewTitle}>Đánh giá Shop ({product.reviewCount})</Text>
-             </View>
-             <TouchableOpacity style={{flexDirection: 'row', alignItems: 'center'}}>
-                <Text style={styles.seeAllText}>Tất cả</Text>
-                <Ionicons name="chevron-forward" size={14} color={COLORS.textSecondary} />
-             </TouchableOpacity>
-           </View>
-           
-           {reviews.slice(0, 2).map((r, idx) => (
-             <View key={r.id} style={[styles.reviewItem, idx > 0 && {borderTopWidth: 1, borderTopColor: '#f0f0f0'}]}>
-                <View style={styles.reviewUserRow}>
-                  <Ionicons name="person-circle" size={24} color="#ccc" />
-                  <Text style={styles.reviewUserName}>
-                    {r.userName ? r.userName.charAt(0) + '****' + r.userName.slice(-1) : 'k*****h'}
-                  </Text>
-                </View>
-                <View style={styles.reviewStars}>
-                   {[1,2,3,4,5].map(s => (
-                     <Ionicons key={s} name="star" size={12} color={s <= r.rating ? "#ffc107" : "#eee"} />
-                   ))}
-                </View>
-                <Text style={styles.reviewComment}>{r.comment || ''}</Text>
-             </View>
-           ))}
+          <View style={styles.qtyBlock}>
+            <Text style={styles.blockLabelFe}>Số lượng</Text>
+            <View style={styles.qtyRowFe}>
+              <View style={styles.qtyStepper}>
+                <TouchableOpacity
+                  style={styles.qtyStepBtn}
+                  onPress={() => setQuantity((q) => Math.max(1, q - 1))}
+                  disabled={quantity <= 1}
+                >
+                  <Text style={styles.qtyStepTxt}>−</Text>
+                </TouchableOpacity>
+                <Text style={styles.qtyValueFe}>{quantity}</Text>
+                <TouchableOpacity
+                  style={styles.qtyStepBtn}
+                  onPress={() =>
+                    setQuantity((q) =>
+                      currentStock > 0 ? Math.min(currentStock, q + 1) : q + 1
+                    )
+                  }
+                  disabled={currentStock > 0 ? quantity >= currentStock : false}
+                >
+                  <Text style={styles.qtyStepTxt}>+</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.stockHint}>
+                {currentStock > 0 ? `Còn lại ${currentStock}` : 'Hết hàng'}
+              </Text>
+            </View>
+          </View>
         </View>
 
         {/* === 5. SHOP INFO === */}
@@ -341,9 +472,22 @@ export default function ProductDetailScreen() {
              <View style={styles.shopInfoCenter}>
                <Text style={styles.shopNameText}>{shop?.name || product.shopName}</Text>
              </View>
-             <TouchableOpacity style={styles.viewShopBtn} onPress={() => router.push(`/shop/${product.shopSlug}`)}>
-               <Text style={styles.viewShopText}>Xem Shop</Text>
-             </TouchableOpacity>
+          </View>
+          <View style={styles.shopActionsRow}>
+            <TouchableOpacity
+              style={styles.chatShopBtn}
+              onPress={() => router.push('/messages' as Href)}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="chatbubble-ellipses-outline" size={18} color={COLORS.primary} />
+              <Text style={styles.chatShopBtnT}>Chat ngay</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.viewShopBtn}
+              onPress={() => router.push(`/shop/${product.shopSlug}` as Href)}
+            >
+              <Text style={styles.viewShopText}>Xem Shop</Text>
+            </TouchableOpacity>
           </View>
           <View style={styles.shopStatsRow}>
              <View style={styles.shopStatCol}>
@@ -365,36 +509,58 @@ export default function ProductDetailScreen() {
           </View>
         </View>
 
-        {/* === 6. TOP RELATED === */}
+        {/* Mô tả (tiêu đề kiểu FE) */}
+        <View style={styles.cardSection}>
+          <View style={styles.descTitleRow}>
+            <View style={styles.descBar} />
+            <Text style={styles.descTitleText}>Mô tả sản phẩm</Text>
+          </View>
+          <Text style={styles.descriptionText}>
+            {product.description || 'Sản phẩm chưa có mô tả chi tiết.'}
+          </Text>
+        </View>
+
+        <StorefrontProductReviews
+          productId={product.id}
+          averageRating={product.averageRating}
+          reviewCount={product.reviewCount}
+        />
+
         {relatedProducts.length > 0 && (
-          <View style={styles.cardSection}>
-             <View style={styles.relatedHeader}>
-                <Text style={styles.relatedTitle}>Top sản phẩm nổi bật</Text>
-                <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
-             </View>
-             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                {relatedProducts.map(rp => (
-                  <TouchableOpacity key={rp.id} style={styles.relatedCard} onPress={() => router.push(`/products/${rp.slug}`)}>
-                     <Image source={{ uri: rp.imageUrls[0] || 'https://via.placeholder.com/150' }} style={styles.relatedImg} />
-                     <Text style={styles.relatedName} numberOfLines={2}>{rp.name}</Text>
-                     <Text style={styles.relatedPrice}>{formatPrice(rp.basePrice)}</Text>
-                     <View style={styles.relatedFooter}>
-                        <Text style={styles.relatedSold}>Đã bán {rp.soldCount}</Text>
-                     </View>
-                  </TouchableOpacity>
-                ))}
-             </ScrollView>
+          <View style={[styles.cardSection, { backgroundColor: '#f9faf9' }]}>
+            <View style={styles.relatedHeaderFe}>
+              <View style={styles.descBar} />
+              <Text style={styles.relatedTitleFe}>Sản phẩm tương tự</Text>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 8 }}
+            >
+              {relatedProducts.map((rp) => (
+                <TouchableOpacity
+                  key={rp.id}
+                  style={styles.relatedCard}
+                  onPress={() => router.push(`/products/${rp.slug}`)}
+                >
+                  <Image
+                    source={{ uri: rp.imageUrls[0] || 'https://via.placeholder.com/150' }}
+                    style={styles.relatedImg}
+                  />
+                  <Text style={styles.relatedShopName} numberOfLines={1}>
+                    {rp.shopName}
+                  </Text>
+                  <Text style={styles.relatedName} numberOfLines={2}>
+                    {rp.name}
+                  </Text>
+                  <Text style={styles.relatedPrice}>{formatPrice(rp.basePrice)}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
         )}
 
-        {/* === 7. DESCRIPTION === */}
-        <View style={styles.cardSection}>
-          <Text style={styles.sectionTitleShopee}>Chi tiết sản phẩm</Text>
-          <Text style={styles.descriptionText}>{product.description || 'Sản phẩm chưa có mô tả chi tiết.'}</Text>
-        </View>
-        
-        {/* Padding for sticky footer */}
-        <View style={{height: 100}} />
+        <View style={{ height: 100 }} />
       </ScrollView>
 
       {/* === MODERN STICKY FOOTER === */}
@@ -683,6 +849,96 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     lineHeight: 22,
   },
+  breadcrumbRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 10,
+  },
+  breadLink: { fontSize: 12, color: '#9ca3af' },
+  breadCurrent: { fontSize: 12, color: '#6b7280', maxWidth: width * 0.55 },
+  titleFavRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  productTitleFe: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.text,
+    flex: 1,
+    lineHeight: 24,
+  },
+  ratingMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 6,
+  },
+  starLine: { flexDirection: 'row', gap: 2 },
+  metaSep: { color: '#d1d5db', fontSize: 12 },
+  metaText: { fontSize: 12, color: '#6b7280' },
+  dividerLight: { height: 1, backgroundColor: '#f3f4f6', marginVertical: 12 },
+  mainPriceFe: { fontSize: 28, fontWeight: '800', color: '#E07A5F', marginTop: 4 },
+  blockLabelFe: { fontSize: 13, fontWeight: '600', color: '#4b5563', marginBottom: 8 },
+  variantChipsRow: { flexDirection: 'row', gap: 8, paddingBottom: 4 },
+  variantChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+  },
+  variantChipOn: { borderColor: COLORS.primary, backgroundColor: 'rgba(236,127,19,0.08)' },
+  variantChipT: { fontSize: 13, color: '#4b5563' },
+  variantChipTOn: { color: COLORS.primary, fontWeight: '600' },
+  qtyBlock: { width: '100%' },
+  qtyRowFe: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  qtyStepper: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, overflow: 'hidden' },
+  qtyStepBtn: { paddingHorizontal: 14, paddingVertical: 8 },
+  qtyStepTxt: { fontSize: 18, color: '#6b7280' },
+  qtyValueFe: { minWidth: 40, textAlign: 'center', fontSize: 15, fontWeight: '600', color: COLORS.text },
+  stockHint: { fontSize: 12, color: '#9ca3af' },
+  kwBlock: { width: '100%' },
+  kwLabel: { fontSize: 12, fontWeight: '600', color: '#4b5563', marginBottom: 6 },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chipOrange: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#ffedd5',
+  },
+  chipOrangeT: { fontSize: 11, color: '#9a3412' },
+  chipGray: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    backgroundColor: '#f3f4f6',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  chipGrayT: { fontSize: 11, color: '#374151' },
+  descTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  descBar: { width: 3, height: 18, backgroundColor: COLORS.primary, borderRadius: 2 },
+  descTitleText: { fontSize: 16, fontWeight: '700', color: COLORS.text },
+  shopActionsRow: { flexDirection: 'row', gap: 8, marginTop: 10, marginBottom: 4 },
+  chatShopBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  chatShopBtnT: { fontSize: 14, color: COLORS.primary, fontWeight: '600' },
   /* REUSABLE CARD */
   cardSection: {
     backgroundColor: '#fff',
@@ -694,6 +950,21 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     marginBottom: 12,
     fontWeight: '500',
+  },
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+  },
+  tagLabel: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
+  },
+  tagText: {
+    fontSize: 13,
+    color: COLORS.text,
+    flex: 1,
   },
   /* INLINE VARIANTS */
   inlineVariantRow: {
@@ -953,11 +1224,13 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   viewShopBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
-    borderColor: SHOPEE_PRICE,
-    borderRadius: 4,
+    borderColor: '#e5ded6',
+    borderRadius: 8,
   },
   viewShopText: {
     fontSize: 12,
@@ -1000,6 +1273,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.text,
   },
+  relatedHeaderFe: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  relatedTitleFe: { fontSize: 16, fontWeight: '700', color: COLORS.text },
+  relatedShopName: { fontSize: 10, color: '#9ca3af', marginTop: 4, paddingHorizontal: 4 },
   relatedCard: {
     width: 120,
     borderWidth: 1,
