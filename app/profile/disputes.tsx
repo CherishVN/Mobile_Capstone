@@ -18,8 +18,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { Ionicons } from '@expo/vector-icons'
-import * as ImagePicker from 'expo-image-picker'
-import { supabase } from '@/lib/supabase'
+import { DisputeEvidencePicker } from '@/components/DisputeEvidencePicker'
 import { disputeService } from '@/services/dispute-service'
 import { orderService } from '@/services/order-service'
 import {
@@ -67,108 +66,6 @@ function formatDate(dateStr: string) {
     day: '2-digit', month: '2-digit', year: 'numeric',
   })
 }
-
-// --- Evidence uploader for mobile ---
-interface EvidenceUploaderProps {
-  urls: string[]
-  onChange: (urls: string[]) => void
-  disabled?: boolean
-}
-
-function EvidencePicker({ urls, onChange, disabled }: EvidenceUploaderProps) {
-  const [uploading, setUploading] = useState(false)
-
-  const pick = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync()
-    if (!perm.granted) {
-      Alert.alert('Thiếu quyền', 'Vui lòng cấp quyền truy cập thư viện ảnh')
-      return
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images', 'videos'],
-      allowsMultipleSelection: true,
-      quality: 0.8,
-      selectionLimit: 10 - urls.length,
-    })
-    if (result.canceled || !result.assets.length) return
-
-    setUploading(true)
-    const newUrls: string[] = []
-    for (const asset of result.assets) {
-      try {
-        const ext = asset.uri.split('.').pop() ?? 'jpg'
-        const path = `dispute-evidence/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-        const response = await fetch(asset.uri)
-        const blob = await response.blob()
-        const { error } = await supabase.storage
-          .from('product-images')
-          .upload(path, blob, { contentType: asset.mimeType ?? 'image/jpeg' })
-        if (!error) {
-          const { data } = supabase.storage.from('product-images').getPublicUrl(path)
-          newUrls.push(data.publicUrl)
-        }
-      } catch {
-        // bỏ qua file lỗi
-      }
-    }
-    setUploading(false)
-    if (newUrls.length) onChange([...urls, ...newUrls])
-  }
-
-  const remove = (idx: number) => {
-    onChange(urls.filter((_, i) => i !== idx))
-  }
-
-  return (
-    <View style={epStyles.wrap}>
-      {urls.map((u, i) => (
-        <View key={i} style={epStyles.chip}>
-          <Ionicons name="image-outline" size={14} color={COLORS.primary} />
-          <Text style={epStyles.chipText} numberOfLines={1}>Ảnh {i + 1}</Text>
-          {!disabled && (
-            <TouchableOpacity onPress={() => remove(i)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close-circle" size={16} color={COLORS.textSecondary} />
-            </TouchableOpacity>
-          )}
-        </View>
-      ))}
-      {urls.length < 10 && !disabled && (
-        <TouchableOpacity
-          style={[epStyles.addBtn, uploading && epStyles.addBtnDisabled]}
-          onPress={pick}
-          disabled={uploading}
-        >
-          {uploading ? (
-            <ActivityIndicator size="small" color={COLORS.primary} />
-          ) : (
-            <>
-              <Ionicons name="cloud-upload-outline" size={16} color={COLORS.primary} />
-              <Text style={epStyles.addBtnText}>Thêm ảnh/video</Text>
-            </>
-          )}
-        </TouchableOpacity>
-      )}
-    </View>
-  )
-}
-
-const epStyles = StyleSheet.create({
-  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#FFF7ED', borderWidth: 1, borderColor: '#FED7AA',
-    borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5,
-    maxWidth: 120,
-  },
-  chipText: { fontSize: 12, color: COLORS.primary, flex: 1 },
-  addBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    borderWidth: 1, borderColor: COLORS.primary, borderStyle: 'dashed',
-    borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6,
-  },
-  addBtnDisabled: { opacity: 0.5 },
-  addBtnText: { fontSize: 12, color: COLORS.primary, fontWeight: '500' },
-})
 
 // --- Main Screen ---
 export default function DisputesScreen() {
@@ -715,7 +612,7 @@ export default function DisputesScreen() {
                 <Text style={styles.label}>
                   Bằng chứng <Text style={styles.optional}>(ảnh / video, tối đa 10)</Text>
                 </Text>
-                <EvidencePicker urls={evidenceUrls} onChange={setEvidenceUrls} disabled={creating} />
+                <DisputeEvidencePicker urls={evidenceUrls} onChange={setEvidenceUrls} disabled={creating} />
               </View>
 
               {/* Amount */}

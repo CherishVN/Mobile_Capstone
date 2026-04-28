@@ -789,7 +789,7 @@ export default function OrderDetailScreen() {
       )}
       {canDisputePostReceipt && (
         <Button
-          title="🚨 Khiếu nại đơn hàng"
+          title="Khiếu nại đơn hàng"
           onPress={() => router.push(`/profile/disputes?orderId=${order.id}` as any)}
           variant="outline"
           fullWidth
