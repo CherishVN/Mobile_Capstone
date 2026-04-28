@@ -33,6 +33,10 @@ function normalizeDevHostUrl(url: string): string {
   if (!raw) return raw
   try {
     const parsed = new URL(raw)
+    // 0.0.0.0 chỉ dùng khi server bind; client (app) không thể gọi được — hay bị copy nhầm từ launchSettings.
+    if (parsed.hostname === '0.0.0.0') {
+      parsed.hostname = 'localhost'
+    }
     const loopback =
       parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1'
     const androidEmulator = Platform.OS === 'android' && Constants.isDevice !== true
