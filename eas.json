@@ -19,7 +19,9 @@
         "EXPO_PUBLIC_SUPABASE_URL": "https://tznxvhjxazepelonjeew.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6bnh2aGp4YXplcGVsb25qZWV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc2MDE2ODUsImV4cCI6MjA4MzE3NzY4NX0.Ou3yhoLXp59v9xS6gRTI-xHSBlgqkfJfdcD3K_AvPY8",
         "EXPO_PUBLIC_API_URL": "https://ecommerce-api-936247307943.asia-southeast1.run.app",
-        "EXPO_PUBLIC_AI_URL": "https://ecommerce-ai-936247307943.asia-southeast1.run.app"
+        "EXPO_PUBLIC_AI_URL": "https://ecommerce-ai-936247307943.asia-southeast1.run.app",
+        "EXPO_PUBLIC_GHN_TOKEN": "451d65ca-855b-11ef-8e53-0a00184fe694",
+        "EXPO_PUBLIC_GHN_SHOP_ID": "194721"
       }
     },
     "production": {
@@ -30,7 +32,9 @@
         "EXPO_PUBLIC_SUPABASE_URL": "https://tznxvhjxazepelonjeew.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6bnh2aGp4YXplcGVsb25qZWV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc2MDE2ODUsImV4cCI6MjA4MzE3NzY4NX0.Ou3yhoLXp59v9xS6gRTI-xHSBlgqkfJfdcD3K_AvPY8",
         "EXPO_PUBLIC_API_URL": "https://ecommerce-api-936247307943.asia-southeast1.run.app",
-        "EXPO_PUBLIC_AI_URL": "https://ecommerce-ai-936247307943.asia-southeast1.run.app"
+        "EXPO_PUBLIC_AI_URL": "https://ecommerce-ai-936247307943.asia-southeast1.run.app",
+        "EXPO_PUBLIC_GHN_TOKEN": "451d65ca-855b-11ef-8e53-0a00184fe694",
+        "EXPO_PUBLIC_GHN_SHOP_ID": "194721"
       }
     }
   },

@@ -78,6 +78,9 @@ export default function GoogleAuthScreen() {
         options: {
           skipBrowserRedirect: true,
           redirectTo: 'http://localhost/auth/callback',
+          queryParams: {
+            prompt: 'select_account', // Luôn hiện bảng chọn tài khoản Google
+          },
         },
       })
       .then(({ data, error }) => {
@@ -146,6 +149,8 @@ export default function GoogleAuthScreen() {
       <WebView
         source={{ uri: authUrl }}
         style={styles.webview}
+        incognito={true}
+        thirdPartyCookiesEnabled={false}
         javaScriptEnabled
         domStorageEnabled
         startInLoadingState

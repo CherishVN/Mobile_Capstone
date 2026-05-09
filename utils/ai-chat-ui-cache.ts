@@ -7,7 +7,7 @@ import type { AssistantUiMessage } from '@/types/ai-chat'
 
 export const AI_CHAT_CACHE_PREFIX = 'ai-chat-ui-state:'
 
-export type ProductSelection = { checked: boolean; quantity: number }
+export type ProductSelection = { checked: boolean; quantity: number; selectedVariantId?: string }
 
 export type ConfirmTargetCache = { cartId?: string; messageId: string }
 

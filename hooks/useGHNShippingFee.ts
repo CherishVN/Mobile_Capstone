@@ -225,7 +225,8 @@ export function useGHNShippingFee(shops: ShopInput[], address: Address | undefin
 
       const results = await Promise.allSettled(
         currentShops.map(async (shop) => {
-          const ghnShopId = shop.ghnShopId ?? undefined
+          const fallbackShopId = process.env.EXPO_PUBLIC_GHN_SHOP_ID ? Number(process.env.EXPO_PUBLIC_GHN_SHOP_ID) : undefined
+          const ghnShopId = fallbackShopId || shop.ghnShopId
           let list: GHNService[] = []
           if (ghnShopId == null || shop.fromDistrictId == null) {
             throw new Error(

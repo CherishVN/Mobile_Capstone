@@ -19,9 +19,13 @@ function isAppDeepLink(url: string): boolean {
  * WebView gặp redirect từ BE sang deep link → chặn load và điều hướng trong Expo Router.
  */
 export function tryCompleteMoMoWebViewReturn(url: string): boolean {
-  if (!url || !isAppDeepLink(url)) return false
+  if (!url) return false
 
   const lower = url.toLowerCase()
+  const isWebReturn = lower.includes('payment/success') || lower.includes('payment/failed')
+
+  if (!isAppDeepLink(url) && !isWebReturn) return false
+
   if (lower.includes('payment/failed')) {
     let message = 'Thanh toán thất bại'
     try {
@@ -80,6 +84,24 @@ export type MoMoInAppResult =
  */
 export async function startMoMoInAppSession(orderId: string): Promise<MoMoInAppResult> {
   const payRes = await paymentService.createMoMo(orderId)
+  if (!payRes.success || !payRes.paymentUrl) {
+    return { kind: 'error', message: payRes.message }
+  }
+
+  pendingMoMoUrl = payRes.paymentUrl
+  router.push('/payment/momo-web' as never)
+  return { kind: 'opened' }
+}
+
+/**
+ * Mở MoMo cho NHIỀU đơn hàng (multi-shop checkout) — gộp tất cả vào 1 giao dịch.
+ */
+export async function startMoMoBatchInAppSession(orderIds: string[]): Promise<MoMoInAppResult> {
+  if (orderIds.length === 1) {
+    return startMoMoInAppSession(orderIds[0])
+  }
+
+  const payRes = await paymentService.createMoMoBatch(orderIds)
   if (!payRes.success || !payRes.paymentUrl) {
     return { kind: 'error', message: payRes.message }
   }

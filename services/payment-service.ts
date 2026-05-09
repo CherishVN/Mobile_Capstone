@@ -36,4 +36,7 @@ export const paymentService = {
 
   createMoMo: (orderId: string) =>
     api.post<CreatePaymentResult>('/api/payments/momo/create', { orderId }),
+
+  createMoMoBatch: (orderIds: string[]) =>
+    api.post<CreatePaymentResult>('/api/payments/momo/create-batch', { orderIds }),
 }

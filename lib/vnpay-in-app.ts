@@ -30,9 +30,13 @@ function isAppDeepLink(url: string): boolean {
  * WebView gặp redirect 302 từ BE sang deep link — chặn load và điều hướng trong Expo Router.
  */
 export function tryCompleteVnPayWebViewReturn(url: string): boolean {
-  if (!url || !isAppDeepLink(url)) return false
+  if (!url) return false
 
   const lower = url.toLowerCase()
+  const isWebReturn = lower.includes('payment/success') || lower.includes('payment/failed')
+
+  if (!isAppDeepLink(url) && !isWebReturn) return false
+
   if (lower.includes('payment/failed')) {
     let message = 'Thanh toán thất bại'
     try {
