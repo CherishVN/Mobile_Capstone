@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   View,
   Text,
@@ -25,9 +25,15 @@ import { paymentService } from '@/services/payment-service'
 import { orderService } from '@/services/order-service'
 import { startVnPayInAppSession } from '@/lib/vnpay-in-app'
 import { markPendingPaymentOrder } from '@/lib/pending-payment'
-import type { AssistantUiMessage, ProductSuggestion, AiSessionSummary } from '@/types/ai-chat'
+import type {
+  AssistantUiMessage,
+  ProductSuggestion,
+  AiSessionSummary,
+  AiChatShopShippingOption,
+} from '@/types/ai-chat'
 import type { Address } from '@/types/user'
 import { useCart } from '@/hooks/useCart'
+import { useGHNShippingFee } from '@/hooks/useGHNShippingFee'
 import Button from '@/components/Button'
 import SessionListView from '@/components/ai-assistant/SessionListView'
 import ConfirmOrderBar, { type AiPaymentMethod } from '@/components/ai-assistant/ConfirmOrderBar'
@@ -41,6 +47,7 @@ import {
 } from '@/utils/ai-chat-ui-cache'
 import { mapHistoryToAssistantUi } from '@/utils/ai-chat-map-history'
 import { dedupeMergedAssistantMessages } from '@/utils/ai-chat-merge-messages'
+import { resolveUnitPriceForProduct } from '@/utils/ai-chat-resolve-price'
 
 const SUGGESTION_CHIPS = [
   'Áo thun nam dưới 200k',
@@ -62,7 +69,7 @@ export default function AssistantScreen() {
   const router = useRouter()
   const { isAuthenticated } = useAuthStore()
 
-  const { addToCart, loadCart } = useCart()
+  const { cart, addToCart, loadCart } = useCart()
   const listRef = useRef<FlatList>(null)
   const inputRef = useRef<TextInput>(null)
 
@@ -90,6 +97,74 @@ export default function AssistantScreen() {
   const [selectedAddressId, setSelectedAddressId] = useState('')
   const [paymentMethod, setPaymentMethod] = useState<AiPaymentMethod>('vnpay')
   const [orderLoading, setOrderLoading] = useState(false)
+
+  const selectedAddress = useMemo(
+    () =>
+      addresses.find((a) => a.id === selectedAddressId) ??
+      addresses.find((a) => a.isDefault) ??
+      addresses[0],
+    [addresses, selectedAddressId]
+  )
+
+  // Gom item theo shop để feed `useGHNShippingFee` — Main API yêu cầu phí GHN
+  // theo từng shop trước khi cho phép tạo đơn từ giỏ.
+  const cartShopGroups = useMemo(() => {
+    if (!cart?.items?.length) return [] as Array<{
+      key: string
+      shopId?: string
+      totalWeightGrams: number
+      totalValue: number
+      ghnShopId?: number | null
+      fromDistrictId?: number | null
+      fromWardCode?: string | null
+    }>
+    const map = new Map<string, {
+      key: string
+      shopId?: string
+      totalWeightGrams: number
+      totalValue: number
+      ghnShopId?: number | null
+      fromDistrictId?: number | null
+      fromWardCode?: string | null
+    }>()
+    cart.items.forEach((item, idx) => {
+      const normalizedShopName = item.shopName?.trim() || 'Shop không xác định'
+      const key = item.shopId || normalizedShopName.toLowerCase() || `shop-${idx}`
+      const weight = item.quantity * 500
+      const existing = map.get(key)
+      if (existing) {
+        existing.totalWeightGrams += weight
+        existing.totalValue += item.lineTotal
+      } else {
+        map.set(key, {
+          key,
+          shopId: item.shopId,
+          totalWeightGrams: weight,
+          totalValue: item.lineTotal,
+          ghnShopId: item.ghnShopId ?? null,
+          fromDistrictId: item.fromDistrictId ?? null,
+          fromWardCode: item.fromWardCode ?? null,
+        })
+      }
+    })
+    return Array.from(map.values())
+  }, [cart])
+
+  const ghnShopInputs = useMemo(
+    () =>
+      cartShopGroups.map((g) => ({
+        key: g.key,
+        totalWeightGrams: g.totalWeightGrams,
+        totalValue: g.totalValue,
+        ghnShopId: g.ghnShopId,
+        fromDistrictId: g.fromDistrictId,
+        fromWardCode: g.fromWardCode,
+      })),
+    [cartShopGroups]
+  )
+
+  const { shopFees, isCalculating: ghnCalculating, hasBlockingError: ghnHasError } =
+    useGHNShippingFee(ghnShopInputs, selectedAddress)
 
   const loadSessions = useCallback(async () => {
     setSessionsLoading(true)
@@ -411,7 +486,55 @@ export default function AssistantScreen() {
         return
       }
 
-      const res = await aiChatService.confirmOrder(sessionId, cartId, resolved.id)
+      // Đảm bảo cart store đồng bộ trước khi build shippingOptions
+      let cartForShipping = cart
+      if (!cartForShipping || cartForShipping.id !== cartId) {
+        await loadCart()
+        const fresh = await cartService.getMyCart()
+        cartForShipping = fresh.success ? fresh.data ?? null : null
+      }
+      if (!cartForShipping?.items?.length) {
+        Alert.alert('Giỏ hàng', 'Giỏ đang trống, không thể tạo đơn.')
+        return
+      }
+
+      if (ghnCalculating) {
+        Alert.alert('Vận chuyển', 'Đang tính phí GHN, bạn đợi vài giây nhé.')
+        return
+      }
+      if (ghnHasError) {
+        Alert.alert('Vận chuyển', 'Chưa tính được phí giao hàng. Hãy đổi địa chỉ hoặc thử lại.')
+        return
+      }
+
+      const shippingOptions: AiChatShopShippingOption[] = []
+      for (const group of cartShopGroups) {
+        if (!group.shopId) continue
+        const sf = shopFees.get(group.key)
+        if (!sf || sf.fee == null) {
+          Alert.alert(
+            'Vận chuyển',
+            'Thiếu phí vận chuyển cho một shop trong giỏ. Tải lại hoặc đổi địa chỉ rồi thử lại.'
+          )
+          return
+        }
+        shippingOptions.push({
+          shopId: group.shopId,
+          shippingProvider: 'GHN',
+          shippingServiceId: sf.ghnServiceId ?? '53320',
+          shippingFee: sf.fee,
+          estimatedDeliveryDate: sf.leadTime
+            ? new Date(sf.leadTime * 1000).toISOString()
+            : null,
+        })
+      }
+
+      if (shippingOptions.length === 0) {
+        Alert.alert('Vận chuyển', 'Không xác định được shop trong giỏ để tính phí vận chuyển.')
+        return
+      }
+
+      const res = await aiChatService.confirmOrder(sessionId, cartId, resolved.id, shippingOptions)
 
       if (res.success && res.orderId) {
         if (paymentMethod === 'vnpay') {
@@ -736,7 +859,9 @@ export default function AssistantScreen() {
                       })}
                     </View>
                   )}
-                  <Text style={styles.productRowPrice}>{formatProductPrice(Number(p.basePrice))}</Text>
+                  <Text style={styles.productRowPrice}>
+                    {formatProductPrice(resolveUnitPriceForProduct(p, s.selectedVariantId))}
+                  </Text>
                 </View>
               </TouchableOpacity>
               <View style={styles.qtyRow}>

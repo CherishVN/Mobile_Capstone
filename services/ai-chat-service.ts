@@ -4,6 +4,7 @@ import type {
   AiChatConfirmOrderResponse,
   AiChatSendResponse,
   AiChatSessionResponse,
+  AiChatShopShippingOption,
   AiSessionsListResponse,
   AiSessionMessagesResponse,
 } from '@/types/ai-chat'
@@ -21,11 +22,17 @@ export const aiChatService = {
   sendMessage: (sessionId: string, message: string) =>
     aiApi.post<AiChatSendResponse>('/api/ai/chat/send', { sessionId, message }),
 
-  confirmOrder: (sessionId: string, cartId: string, shippingAddressId: string) =>
+  confirmOrder: (
+    sessionId: string,
+    cartId: string,
+    shippingAddressId: string,
+    shippingOptions: AiChatShopShippingOption[],
+  ) =>
     aiApi.post<AiChatConfirmOrderResponse>('/api/ai/chat/confirm-order', {
       sessionId,
       cartId,
       shippingAddressId,
+      shippingOptions,
     }),
 
   /** ECommerceAPI — lịch sử phiên trong DB */
