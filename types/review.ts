@@ -3,12 +3,16 @@ export interface ProductReview {
   productId: string
   userId: string
   userName?: string | null
+  /** Avatar URL của người đánh giá (BE ProductReviewDto.UserAvatarUrl) */
+  userAvatarUrl?: string | null
   rating: number
   comment?: string | null
   createdAt: string
   imageUrls: string[]
   /** Phản hồi từ người bán (khớp BE ProductReviewDto.SellerReply) */
   sellerReply?: string | null
+  /** Lượt hữu ích (BE ProductReviewDto.HelpfulCount) */
+  helpfulCount?: number
 }
 
 export interface ProductReviewStatsDto {

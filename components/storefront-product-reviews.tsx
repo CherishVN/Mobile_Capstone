@@ -47,17 +47,32 @@ function filterToQuery(f: StorefrontFilter): {
 
 type SortV = 'newest' | 'rating' | 'rating_asc'
 
-function ReviewerAvatar({ name }: { name: string }) {
+function ReviewerAvatar({ name, avatarUrl }: { name: string; avatarUrl?: string | null }) {
   const colors = ['#8b5cf6', '#3b82f6', '#10b981', '#f97316', '#ec4899']
   const safe = (name || '?').trim()
   const color = colors[safe.charCodeAt(0) % colors.length]
-  const initials = safe
-    .split(/\s+/)
+  // Bỏ qua các "từ" toàn chữ số khi lấy initials (vd "Nguyen Thang 32" -> "NT")
+  const words = safe.split(/\s+/).filter((w) => /^\D/.test(w))
+  const initials = (words.length ? words : [safe])
     .slice(-2)
     .map((w) => w[0])
     .join('')
     .toUpperCase()
     .slice(0, 2)
+
+  const [failed, setFailed] = useState(false)
+  const showImage = !!avatarUrl && !failed
+
+  if (showImage) {
+    return (
+      <Image
+        source={{ uri: avatarUrl as string }}
+        style={styles.av}
+        onError={() => setFailed(true)}
+      />
+    )
+  }
+
   return (
     <View style={[styles.av, { backgroundColor: color }]}>
       <Text style={styles.avText}>{initials || '?'}</Text>
@@ -244,7 +259,7 @@ export function StorefrontProductReviews({ productId, averageRating, reviewCount
           return (
             <View key={r.id} style={styles.reviewCard}>
               <View style={styles.reviewTop}>
-                <ReviewerAvatar name={r.userName || '?'} />
+                <ReviewerAvatar name={r.userName || '?'} avatarUrl={r.userAvatarUrl} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.uname}>{r.userName || 'Khách'}</Text>
                   <View style={styles.starsRowSm}>
