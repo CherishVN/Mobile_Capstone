@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useState, useRef, useCallback } from 'react'
 import {
   View,
   Text,
@@ -27,38 +27,37 @@ import { useNotificationStore } from '@/store/notification-store'
 
 const { width } = Dimensions.get('window')
 
-/* --- STATIC DATA MATCHING WEB --- */
 const HERO_SLIDES = [
   {
-    image: 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=1200&q=80',
-    badge: 'Ưu đãi hôm nay',
+    image: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1200&q=80',
+    badge: 'Thời trang',
     badgeColor: '#ec7f13',
-    title: 'Sale lớn\ncuối tuần',
-    titleHighlight: 'Giảm đến 50%',
-    desc: 'Hàng ngàn sản phẩm chính hãng\ngiao nhanh toàn quốc',
+    title: 'Bộ sưu tập\nThời trang 2025',
+    titleHighlight: 'Phong cách mới',
+    desc: 'Cập nhật xu hướng thời trang hiện đại kết hợp nét truyền thống',
     cta: 'Mua ngay',
     btnColor: '#ec7f13',
     overlay: 'rgba(28, 14, 4, 0.58)',
   },
   {
-    image: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1200&q=80',
-    badge: 'Hàng mới về',
+    image: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=1200&q=80',
+    badge: 'Đặc sản vùng miền',
     badgeColor: '#9a734c',
-    title: 'Thời trang\nthu đông 2025',
-    titleHighlight: 'Xu hướng mới',
-    desc: 'Phong cách hiện đại\nkết hợp nét truyền thống Việt Nam',
-    cta: 'Khám phá',
+    title: 'Tinh hoa\nẩm thực Việt',
+    titleHighlight: 'Giao tận nhà',
+    desc: 'Mùi vị chắt lọc từ những nguyên liệu tươi ngon và chất lượng nhất',
+    cta: 'Đặt hàng',
     btnColor: '#9a734c',
     overlay: 'rgba(20, 12, 6, 0.60)',
   },
   {
-    image: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=1200&q=80',
-    badge: 'Đặc sản vùng miền',
+    image: 'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=1200&q=80',
+    badge: 'Đồ thủ công',
     badgeColor: '#c47a2b',
-    title: 'Tinh hoa\nẩm thực Việt',
-    titleHighlight: 'Giao tận nhà',
-    desc: 'Cà phê Đà Lạt, đặc sản Hội An, mắm Phú Quốc — chính gốc 100%',
-    cta: 'Đặt hàng',
+    title: 'Nghệ thuật\nthủ công mỹ nghệ',
+    titleHighlight: 'Độc đáo & Tinh xảo',
+    desc: 'Sản phẩm từ những nghệ nhân tài ba, mang đậm bản sắc văn hóa',
+    cta: 'Khám phá',
     btnColor: '#c47a2b',
     overlay: 'rgba(24, 12, 2, 0.55)',
   },
@@ -81,6 +80,9 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const [activeSlide, setActiveSlide] = useState(0)
 
+  const heroRef = useRef<FlatList>(null)
+  const autoPlayRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
   const cartTotal = useCartStore((state) => state.cart?.items?.length || 0)
   const { isAuthenticated } = useAuthStore()
   const unreadCount = useNotificationStore((s) => s.unreadCount)
@@ -88,8 +90,8 @@ export default function HomeScreen() {
   const loadData = async () => {
     try {
       const [featuredRes, newRes, categoriesRes] = await Promise.all([
-        productService.getProducts({ sortBy: 'best_seller', pageSize: 8 }),
-        productService.getProducts({ sortBy: 'newest', pageSize: 10 }),
+        productService.getProducts({ sortBy: 'best_seller', pageSize: 12 }),
+        productService.getProducts({ sortBy: 'newest', pageSize: 12 }),
         categoryService.getCategories(),
       ])
 
@@ -101,7 +103,7 @@ export default function HomeScreen() {
         setCategories(
           categoryData
             .filter((c) => c.level === 1 && !c.parentId)
-            .slice(0, 8)
+            .slice(0, 6)
         )
       } else {
         setCategories([])
@@ -118,6 +120,20 @@ export default function HomeScreen() {
     loadData()
   }, [])
 
+  // Auto-play hero carousel (matching FE 4s interval)
+  useEffect(() => {
+    autoPlayRef.current = setInterval(() => {
+      setActiveSlide((prev) => {
+        const next = (prev + 1) % HERO_SLIDES.length
+        heroRef.current?.scrollToIndex({ index: next, animated: true })
+        return next
+      })
+    }, 4000)
+    return () => {
+      if (autoPlayRef.current) clearInterval(autoPlayRef.current)
+    }
+  }, [])
+
   const onRefresh = () => {
     setRefreshing(true)
     loadData()
@@ -127,54 +143,36 @@ export default function HomeScreen() {
     return <Loading />
   }
 
-  /* --- RENDERERS --- */
   const renderHeroSlide = ({ item }: { item: typeof HERO_SLIDES[0] }) => (
-    <View style={styles.heroSlideWrapper}>
-      <ImageBackground source={{ uri: item.image }} style={styles.heroSlideBg} imageStyle={{ borderRadius: 12 }}>
-        <View style={[styles.heroOverlay, { backgroundColor: item.overlay }]} />
-        <View style={styles.heroSlideContent}>
-          <View style={[styles.heroBadge, { backgroundColor: item.badgeColor }]}>
-            <Text style={styles.heroBadgeText}>{item.badge}</Text>
-          </View>
-          <Text style={styles.heroTitle}>{item.title}</Text>
-          <Text style={styles.heroHighlight}>{item.titleHighlight}</Text>
-          <Text style={styles.heroDesc}>{item.desc}</Text>
+    <View style={styles.heroSlideOuter}>
+      <View style={styles.heroSlideWrapper}>
+        <ImageBackground source={{ uri: item.image }} style={styles.heroSlideBg} imageStyle={{ borderRadius: 12 }}>
+          <View style={[styles.heroOverlay, { backgroundColor: item.overlay }]} />
+          <View style={styles.heroSlideContent}>
+            <View style={[styles.heroBadge, { backgroundColor: item.badgeColor }]}>
+              <Text style={styles.heroBadgeText}>{item.badge}</Text>
+            </View>
+            <Text style={styles.heroTitle}>{item.title}</Text>
+            <Text style={styles.heroHighlight}>{item.titleHighlight}</Text>
+            <Text style={styles.heroDesc}>{item.desc}</Text>
 
-          <TouchableOpacity style={[styles.heroBtn, { backgroundColor: item.btnColor }]}>
-            <Text style={styles.heroBtnText}>{item.cta}</Text>
-            <Ionicons name="arrow-forward" size={16} color="#fff" />
-          </TouchableOpacity>
-        </View>
-      </ImageBackground>
+            <TouchableOpacity style={[styles.heroBtn, { backgroundColor: item.btnColor }]}>
+              <Text style={styles.heroBtnText}>{item.cta}</Text>
+              <Ionicons name="arrow-forward" size={16} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        </ImageBackground>
+      </View>
     </View>
   )
 
-  const renderCategoryItem = ({ item }: { item: Category }) => (
-    <TouchableOpacity
-      style={styles.webStyleCategoryCard}
-      onPress={() => router.push(`/products?categoryId=${item.id}` as Href)}
-      activeOpacity={0.7}
-    >
-      <View style={styles.webStyleCategoryImgContainer}>
-        {item.image ? (
-          <Image source={{ uri: item.image }} style={styles.webStyleCategoryImg} />
-        ) : (
-          <Ionicons name="pricetag" size={28} color={COLORS.textSecondary} />
-        )}
-      </View>
-      <View style={styles.webStyleCategoryTextContainer}>
-        <Text style={styles.webStyleCategoryName} numberOfLines={2}>
-          {item.name}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  )
+  const catColWidth = (width - SIZES.lg * 2 - SIZES.sm * 2) / 3
 
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
 
-      {/* 1. Header Area Match Web */}
+      {/* Header */}
       <View style={styles.headerRow}>
         <Text style={styles.headerBrandMark}>EcomViet</Text>
         <View style={styles.headerActions}>
@@ -221,7 +219,7 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {/* 2. Global Search Bar */}
+        {/* Search Bar */}
         <View style={styles.searchSection}>
           <TouchableOpacity
             style={styles.searchBox}
@@ -233,9 +231,10 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* 3. Hero Carousel */}
+        {/* Hero Carousel */}
         <View style={styles.heroSection}>
           <FlatList
+            ref={heroRef}
             data={HERO_SLIDES}
             horizontal
             pagingEnabled
@@ -243,9 +242,14 @@ export default function HomeScreen() {
             keyExtractor={(_, index) => index.toString()}
             renderItem={renderHeroSlide}
             onMomentumScrollEnd={(event) => {
-              const index = Math.round(event.nativeEvent.contentOffset.x / (width - SIZES.lg * 2))
+              const index = Math.round(event.nativeEvent.contentOffset.x / width)
               setActiveSlide(index)
             }}
+            getItemLayout={(_, index) => ({
+              length: width,
+              offset: width * index,
+              index,
+            })}
           />
           <View style={styles.paginationDots}>
             {HERO_SLIDES.map((_, idx) => (
@@ -254,11 +258,11 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* 4. Selling Points Grid */}
+        {/* Selling Points */}
         <View style={styles.sellingPointsWrap}>
           {SELLING_POINTS.map((sp, idx) => (
             <View key={idx} style={styles.sellingPointItem}>
-              <Ionicons name={sp.icon as any} size={24} color={COLORS.primary} />
+              <Ionicons name={sp.icon as any} size={22} color={COLORS.primary} />
               <View style={styles.sellingPointTexts}>
                 <Text style={styles.spLabel} numberOfLines={1}>{sp.label}</Text>
                 <Text style={styles.spSub} numberOfLines={1}>{sp.sub}</Text>
@@ -267,37 +271,65 @@ export default function HomeScreen() {
           ))}
         </View>
 
-        {/* 5. Categories (Web Style) */}
+        {/* Danh mục nổi bật — Grid 3 columns (matching FE) */}
         <View style={styles.sectionWrap}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleWrap}>
               <View style={styles.sectionTitleIndicator} />
               <Text style={styles.sectionTitleMain}>Danh mục nổi bật</Text>
             </View>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/categories' as Href)}>
+            <TouchableOpacity
+              style={styles.seeAllBtn}
+              onPress={() => router.push('/(tabs)/categories' as Href)}
+            >
               <Text style={styles.seeAllText}>Xem tất cả</Text>
+              <Ionicons name="chevron-forward" size={14} color={COLORS.textSecondary} />
             </TouchableOpacity>
           </View>
 
-          <FlatList
-            data={categories}
-            renderItem={renderCategoryItem}
-            keyExtractor={(item) => item.id.toString()}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingHorizontal: SIZES.lg, gap: SIZES.sm }}
-          />
+          <View style={styles.categoryGrid}>
+            {categories.map((cat) => (
+              <TouchableOpacity
+                key={cat.id}
+                style={[styles.categoryCard, { width: catColWidth }]}
+                onPress={() => router.push(`/products?categoryId=${cat.id}` as Href)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.categoryImgWrap}>
+                  {cat.image ? (
+                    <Image source={{ uri: cat.image }} style={styles.categoryImg} />
+                  ) : (
+                    <View style={styles.categoryPlaceholder}>
+                      <Ionicons name="pricetag" size={32} color={COLORS.textSecondary} />
+                    </View>
+                  )}
+                </View>
+                <View style={styles.categoryTextWrap}>
+                  <Text style={styles.categoryName} numberOfLines={1}>{cat.name}</Text>
+                  {(cat as any).productCount > 0 && (
+                    <Text style={styles.categoryCount}>{(cat as any).productCount} sản phẩm</Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
-        {/* 6. Flash Sales / Hot Products (Horizontal) */}
+        {/* Sản phẩm nổi bật — Horizontal scroll (matching FE) */}
         {featuredProducts.length > 0 && (
-          <View style={[styles.sectionWrap, styles.tintBgWrapper]}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleWrap}>
-                <Text style={[styles.sectionTitleMain, { color: COLORS.secondary }]}>Sản phẩm bán chạy</Text>
+          <View style={styles.featuredSection}>
+            <View style={styles.featuredHeader}>
+              <View style={styles.featuredHeaderLeft}>
+                <Text style={styles.featuredTitle}>Sản phẩm nổi bật</Text>
+                <View style={styles.featuredDivider} />
+                <Text style={styles.featuredSub}>Được mua nhiều nhất</Text>
               </View>
-              <TouchableOpacity onPress={() => router.push('/products?sortBy=best_seller')}>
+              <TouchableOpacity
+                style={styles.seeAllBtn}
+                onPress={() => router.push('/products?sortBy=best_seller')}
+              >
                 <Text style={styles.seeAllText}>Xem tất cả</Text>
+                <Ionicons name="chevron-forward" size={14} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
 
@@ -307,7 +339,7 @@ export default function HomeScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ paddingHorizontal: SIZES.lg, gap: SIZES.md }}
               renderItem={({ item }) => (
-                <View style={{ width: 160 }}>
+                <View style={{ width: 170 }}>
                   <ProductCard product={item} onPress={() => router.push(`/products/${item.slug}`)} />
                 </View>
               )}
@@ -315,7 +347,7 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* 7. Newest Products (Grid) */}
+        {/* Tất cả sản phẩm — Grid (matching FE) */}
         <View style={styles.sectionWrap}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleWrap}>
@@ -336,12 +368,11 @@ export default function HomeScreen() {
           </View>
 
           <TouchableOpacity style={styles.loadMoreBtn} onPress={() => router.push('/products?sortBy=newest')}>
-            <Text style={styles.loadMoreText}>Xem tất cả sản phẩm</Text>
             <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
+            <Text style={styles.loadMoreText}>Xem thêm sản phẩm</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Footer info padding */}
         <View style={{ height: 40 }} />
       </ScrollView>
     </View>
@@ -421,10 +452,15 @@ const styles = StyleSheet.create({
     marginTop: SIZES.md,
     alignItems: 'center',
   },
+  heroSlideOuter: {
+    width: width,
+    paddingHorizontal: SIZES.lg,
+  },
   heroSlideWrapper: {
-    width: width - SIZES.lg * 2,
+    width: '100%',
     height: 220,
-    marginHorizontal: SIZES.lg,
+    borderRadius: 12,
+    overflow: 'hidden',
   },
   heroSlideBg: {
     width: '100%',
@@ -474,30 +510,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'flex-start',
     marginTop: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
     gap: 4,
   },
   heroBtnText: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 'bold',
   },
   paginationDots: {
     flexDirection: 'row',
     justifyContent: 'center',
     marginTop: SIZES.sm,
-    gap: 4,
+    gap: 6,
   },
   dot: {
-    height: 4,
+    height: 6,
     width: 6,
-    backgroundColor: '#ccc',
-    borderRadius: 2,
+    backgroundColor: 'rgba(0,0,0,0.15)',
+    borderRadius: 3,
   },
   dotActive: {
-    width: 16,
+    width: 20,
     backgroundColor: COLORS.primary,
   },
   /* SELLING POINTS */
@@ -514,7 +550,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: SIZES.sm,
-    borderRadius: 8,
+    borderRadius: 10,
     gap: SIZES.sm,
     borderWidth: 1,
     borderColor: '#F3F4F6',
@@ -529,17 +565,12 @@ const styles = StyleSheet.create({
   },
   spSub: {
     fontSize: 9,
-    color: COLORS.textSecondary,
+    color: '#9ca3af',
     marginTop: 2,
   },
-  /* SECTION GLOBALS */
+  /* SECTION */
   sectionWrap: {
     marginBottom: SIZES.lg,
-  },
-  tintBgWrapper: {
-    backgroundColor: 'rgba(236,127,19,0.06)',
-    paddingVertical: SIZES.lg,
-    marginTop: SIZES.md,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -551,11 +582,11 @@ const styles = StyleSheet.create({
   sectionTitleWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SIZES.xs,
+    gap: SIZES.sm,
   },
   sectionTitleIndicator: {
     width: 4,
-    height: 18,
+    height: 20,
     backgroundColor: COLORS.primary,
     borderRadius: 2,
   },
@@ -564,40 +595,96 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: COLORS.text,
   },
+  seeAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
   seeAllText: {
     fontSize: FONTS.size.sm,
     color: COLORS.textSecondary,
     fontWeight: '600',
   },
-  /* CATEGORIES */
-  webStyleCategoryCard: {
-    width: 90,
+  /* CATEGORIES — Grid 3 cols (matching FE) */
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: SIZES.lg,
+    gap: SIZES.sm,
+  },
+  categoryCard: {
     backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: '#eee',
-    borderRadius: 8,
+    borderColor: '#F3F4F6',
+    borderRadius: 12,
     overflow: 'hidden',
   },
-  webStyleCategoryImgContainer: {
-    height: 70,
-    backgroundColor: '#F9FAFB',
-    justifyContent: 'center',
-    alignItems: 'center',
+  categoryImgWrap: {
+    aspectRatio: 1,
+    backgroundColor: '#f5ede0',
+    overflow: 'hidden',
   },
-  webStyleCategoryImg: {
+  categoryImg: {
     width: '100%',
     height: '100%',
     resizeMode: 'cover',
   },
-  webStyleCategoryTextContainer: {
-    padding: 6,
+  categoryPlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  webStyleCategoryName: {
-    fontSize: 10,
+  categoryTextWrap: {
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+  },
+  categoryName: {
+    fontSize: 12,
     fontWeight: 'bold',
     color: COLORS.text,
-    textAlign: 'center',
+  },
+  categoryCount: {
+    fontSize: 10,
+    color: '#9ca3af',
+    marginTop: 2,
+  },
+  /* FEATURED — orange tint section (matching FE) */
+  featuredSection: {
+    backgroundColor: 'rgba(236,127,19,0.06)',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(236,127,19,0.15)',
+    paddingVertical: SIZES.lg,
+    marginBottom: SIZES.lg,
+  },
+  featuredHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SIZES.lg,
+    marginBottom: SIZES.md,
+  },
+  featuredHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SIZES.sm,
+    flex: 1,
+  },
+  featuredTitle: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: COLORS.secondary,
+    letterSpacing: -0.3,
+  },
+  featuredDivider: {
+    width: 1,
+    height: 16,
+    backgroundColor: 'rgba(236,127,19,0.3)',
+  },
+  featuredSub: {
+    fontSize: 11,
+    color: '#9ca3af',
+    fontWeight: '600',
   },
   /* GRID */
   productGridContainer: {
@@ -613,17 +700,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 4,
+    gap: 6,
     marginHorizontal: SIZES.lg,
     marginTop: SIZES.lg,
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderWidth: 1,
     borderColor: '#e5e7eb',
-    borderRadius: 8,
+    borderRadius: 10,
     backgroundColor: '#fff',
   },
   loadMoreText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 'bold',
     color: COLORS.textSecondary,
   },

@@ -18,7 +18,7 @@ import { userService } from '@/services/user-service'
 import { orderService } from '@/services/order-service'
 import { paymentService } from '@/services/payment-service'
 import { startVnPayBatchInAppSession } from '@/lib/vnpay-in-app'
-import { startMoMoInAppSession } from '@/lib/momo-in-app'
+import { startMoMoInAppSession, startMoMoBatchInAppSession } from '@/lib/momo-in-app'
 import { productService } from '@/services/product-service'
 import { Cart, CartItem } from '@/types/cart'
 import { Address } from '@/types/user'
@@ -333,11 +333,11 @@ export default function CheckoutScreen() {
             skipGoToOrders = true
           }
         } else {
-          const momoRes = await startMoMoInAppSession(firstOrderId)
+          await markPendingPaymentOrder(firstOrderId) // (có thể dùng loop cho all orderIds tuỳ logic)
+          const momoRes = await startMoMoBatchInAppSession(orderIds)
           if (momoRes.kind === 'error') {
             Alert.alert('Lỗi', momoRes.message || `Không thể tạo giao dịch ${label}`)
           } else if (momoRes.kind === 'opened') {
-            await markPendingPaymentOrder(firstOrderId)
             skipGoToOrders = true
           }
         }

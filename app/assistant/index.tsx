@@ -242,8 +242,10 @@ export default function AssistantScreen() {
     }
     setApplyingBulkId(msgId(msg))
     try {
+      const sel = selectedProductsByMessageId[msgId(msg)] ?? {}
       for (const item of selectedItems) {
-        const vid = item.variants?.[0]?.id
+        const itemSel = sel[item.id]
+        const vid = itemSel?.selectedVariantId || item.variants?.[0]?.id
         await cartService.addItem({
           productId: item.id,
           variantId: vid,
@@ -293,6 +295,16 @@ export default function AssistantScreen() {
       const mm = { ...(prev[key] ?? {}) }
       const cur = mm[productId] ?? { checked: false, quantity: 1 }
       mm[productId] = { ...cur, quantity: q }
+      return { ...prev, [key]: mm }
+    })
+  }
+
+  const setProductVariant = (messageId: string | number, productId: string, variantId: string) => {
+    const key = String(messageId)
+    setSelectedProductsByMessageId((prev) => {
+      const mm = { ...(prev[key] ?? {}) }
+      const cur = mm[productId] ?? { checked: false, quantity: 1 }
+      mm[productId] = { ...cur, selectedVariantId: variantId }
       return { ...prev, [key]: mm }
     })
   }
@@ -705,6 +717,25 @@ export default function AssistantScreen() {
                   <Text style={styles.productRowName} numberOfLines={2}>
                     {p.name}
                   </Text>
+                  {p.variants && p.variants.length > 1 && (
+                    <View style={styles.variantChipsRow}>
+                      <Text style={styles.variantLabel}>Phân loại:</Text>
+                      {p.variants.map((v) => {
+                        const isSelected = s.selectedVariantId === v.id
+                        return (
+                          <TouchableOpacity
+                            key={v.id}
+                            style={[styles.variantChip, isSelected && styles.variantChipActive]}
+                            onPress={() => setProductVariant(msgId(msg), p.id, v.id)}
+                          >
+                            <Text style={[styles.variantChipText, isSelected && styles.variantChipTextActive]}>
+                              {v.variantName}
+                            </Text>
+                          </TouchableOpacity>
+                        )
+                      })}
+                    </View>
+                  )}
                   <Text style={styles.productRowPrice}>{formatProductPrice(Number(p.basePrice))}</Text>
                 </View>
               </TouchableOpacity>
@@ -1109,6 +1140,40 @@ const styles = StyleSheet.create({
   },
   
   bulkAddText: { color: COLORS.onPrimary, fontWeight: '800', fontSize: FONTS.size.sm },
+  variantChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  variantLabel: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginRight: 2,
+  },
+  variantChip: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: '#fff',
+  },
+  variantChipActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: 'rgba(236,127,19,0.08)',
+  },
+  variantChipText: {
+    fontSize: 11,
+    color: COLORS.text,
+    fontWeight: '500',
+  },
+  variantChipTextActive: {
+    color: COLORS.primary,
+    fontWeight: '700',
+  },
   ctaAdd: {
     marginTop: SIZES.sm,
     backgroundColor: COLORS.text,
